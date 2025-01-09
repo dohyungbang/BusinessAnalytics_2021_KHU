@@ -1,0 +1,1068 @@
+---
+title: "LN09 - Unsupervised Classification"
+author: "Dohyung Bang"
+output: html_document
+---
+
+```{r "setup", include = FALSE}
+knitr::opts_knit$set(root.dir = "C:/BA2021/")
+```
+
+```{r}
+library(tidyr) 
+library(dplyr) 
+library(readr) 
+library(ggplot2)
+```
+
+#1. 거리(Distance)개념과 데이터 정규화 이해하기
+
+## 1-1. 데이터 간 거리(distance) 구하기
+
+```{r}
+nutrient <- read_csv("./data/nutrient.csv")
+```
+
+먼저, 2개 변수만 선정해 Scatter plot을 찍어보자.
+```{r}
+ggplot(data = nutrient, 
+       aes(x = protein, 
+           y = fat)) + 
+  geom_point() +
+  geom_text(aes(label = food), 
+            size = 2.5, 
+            hjust = 0.1, 
+            vjust = -.5)
+```
+
+`Hamburger`와 `Beef roast` 간 
+유클리디안 거리(Eucleadian distance)를 구해보자. 
+
+```{r}
+hamburger <- 
+  nutrient %>%
+  filter(food == "HAMBURGER") %>%
+  select(-food)
+
+beef_roast <- 
+  nutrient %>%
+  filter(food == "BEEF ROAST") %>%
+  select(-food)
+
+diff <- hamburger - beef_roast
+```
+
+
+```{r}
+diff*diff
+
+sum(diff * diff) %>% sqrt() #root 씌우는 함수
+```
+
+R에서 유클리디안 거리는 `dist()` 함수를 이용해서 
+쉽게 여러 개체 간 `거리 행렬(Distance matrix)`를 구할 수 있다.
+
+다만, 이때 들어가는 데이터는 반드시 `Matrix` 여야 한다!
+
+```{r}
+# 첫번째 방법
+nutri_mat <- nutrient[,-1] %>% as.matrix()
+class(nutrient)
+class(nutri_mat)
+
+# 두번째 방법 
+nutri_mat <- 
+  nutrient %>% 
+  select(-food) %>% 
+  as.matrix()
+```
+
+`dist()` 함수를 써주면 알수 없는(?) 데이터 타입으로 반환하므로 데이터 프레임으로 바꾸려면, `as.matrix()`로 바꾸고, `as.data.frame` 해야 된다.
+
+아래 결과물이 개체 간 거리행렬을 나타낸다. 
+```{r}
+nutri_dist_mat <- 
+  dist(nutri_mat, method = "euclidean") %>% 
+  as.matrix() %>% 
+  as.data.frame() %>% 
+  round(digit = 3)
+```
+
+변수명을 바꿔줘 보자.
+```{r}
+names(nutri_dist_mat) <- c(nutrient$food)
+row.names(nutri_dist_mat) <- c(nutrient$food)
+```
+
+햄버거(HAMBURGER) 와 가장 가까운 음식은 무엇일까?
+```{r}
+nutri_dist_mat %>%
+  arrange(HAMBURGER)
+```
+
+만약, 유사도로 거리행렬을 만들고 싶다면 ? 
+
+이름이 똑같은 함수인데, `proxy`라는 패키지에
+들어있는 `dist()`라는 함수가 있다. 
+
+```
+install.packages("proxy")
+```
+
+```{r}
+library(proxy)
+?dist
+```
+
+`proxy` 패키지의 `dist()`함수를 이용해 유사도를 구해보자. 이때, 옵션으로 `method = `를 포함하면
+어떤 거리를 구할지 선택할 수 있다. 
+
+우리는 유사도를 계산하기 위해 `cosine`을 옵션으로 
+넣어보자.
+```{r}
+nutri_sim_mat <- 
+  dist(nutri_mat, method = "cosine") %>% 
+  as.matrix() %>% 
+  as.data.frame() %>% 
+  round(digit = 3)
+View(nutri_sim_mat)
+```
+
+```{r}
+names(nutri_sim_mat) <- c(nutrient$food)
+row.names(nutri_sim_mat) <- c(nutrient$food)
+```
+
+---
+
+## 1-2. 데이터 정규화
+
+앞서 거리를 측정할 때, 특정 변수의 scale 크기에 절대적으로 거리가 결정된다는 것을 알 수 있었다.
+따라서, Scale이 서로 다른 변수들을 고려해 거리를 측정할 때는 반드시 정규화 작업을 거쳐야 한다.
+
+```{r}
+summary(nutrient)
+```
+
+### 1-2-1. Z-scoring
+
+`표준화(Standardization)` 라고도 부르며, 
+평균을 빼고 분산으로 나눠준 값을 의미한다.
+
+표준화를 거친 변수는 평균이 0에 근사하므로 
+0보다 크면 평균보다 큰 값, 0보다 작으면 평균보다
+작은 값으로 해석할 수 있다.
+
+z-scoring 이라고도 부르며 함수는 
+내장함수인 `scale()` 함수를 쓴다.
+
+데이터 정규화 작업은 일종의 대수 연산이 포함되므로 데이터는 매트릭스 형태로 제공되어야 한다.
+
+대부분의 패키지가 데이터프레임을 받으면 자동으로 매트릭스로 변환하므로 정규화 할때는 따로 매트릭스로 바꿀 필요없이, 
+연속형 변수만 subset으로 뽑으면 된다. 
+
+```{r}
+nutrient_mat <- 
+  nutrient %>%
+  #select(energy, protein, fat, calcium, iron)
+  select(-food)
+```
+
+`scale`함수는 자동으로 데이터 프레임을 매트릭스로 변환해 연산한다.
+`center = TRUE` : 평균을 빼줘라 
+`center = FALSE` : 평균을 빼지마라 => `분산계수`
+```{r}
+nutrient_z <- 
+  scale(nutrient_mat, 
+        center = TRUE) %>%
+  round(digit = 3)
+  
+View(nutrient_z)
+summary(nutrient_z)
+```
+
+하지만, 산출값은 `매트릭스`로 제공해주므로 다시 dataframe으로 바꿔주도록 한다. 
+```{r}
+nutrient_z <- nutrient_z %>% as.data.frame()
+```
+
+character vector인 food 변수와 numeric vector인 nutrient_z을 그냥 `cbind` 하면, 모든 값이 character가 된다. 
+이럴때는 cbind.data.frame으로 한번에 처리하도록 한다. 
+```{r}
+food <- nutrient$food
+
+# 붙이는 방법 1
+nutrient_z <- cbind.data.frame(food, nutrient_z)
+
+# 붙이는 방법 2 
+nutrient_z <-
+  nutrient_z %>%
+  mutate(food = nutrient$food)
+```
+
+### 1-2-2. 최소-최대 정규화(Min-Max Normalization)(MMN)
+
+최소-최대 정규화는 가장 큰값을 1, 
+가장 작은 값을 0으로 정규화 시키는 방법이다.
+
+자료의 Scale을 0과 1사이로 모두 통일시켜준다는 점에서 `rescaling`이라고도 부른다.
+아쉽게도 Min-Max Normalization은 함수가 따로 존재하지 않는다.
+
+따라서, 직접 함수를 작성해야 된다. 
+(각각의 x - min(x))/(max(x)-min(x))
+
+```{r}
+x <- c(1,3,5,2,6,3,7,4,7,10) # vector
+min(x)
+max(x)
+
+rescaled_x <- (x-min(x))/(max(x) - min(x))
+rescaled_x
+
+merge <- cbind(x, rescaled_x)
+View(merge)
+```
+
+```{r}
+MMN <- function(x){ # x는 반드시 vector, 매트릭스 x
+  
+  rescaled_x <- 
+    (x-min(x))/(max(x)-min(x))
+  rescaled_x <- round(rescaled_x, digit = 3)
+  
+  return(rescaled_x)
+}
+```
+
+```{r}
+energy <- nutrient$energy
+energy
+
+MMN(energy)
+
+cbind.data.frame(energy, MMN(energy))
+```
+
+중요한 점은 위에 만든 `MMN` 함수는 하나의 변수가 주어졌을 때, 0과 1사이로 표준화하는 함수이다.
+즉, 받아오는 x는 하나의 벡터여야 되는 것이다.
+
+만약, 여기에 전체 데이터 프레임 혹은 매트릭스를 통째로 넣으면 아래와 같은 결과를 만나게 된다. 
+
+nutrient_subset은 벡터가 아니라 매트릭스이기 때문에
+이 상태로 MMN 하면, 엉뚱한 결과를 얻을 수 있다. 
+
+```{r}
+nutrient_z <- scale(nutrient_mat, center = TRUE) # 열단위로 z정규화
+nutrient_mmn <- MMN(nutrient_mat)
+```
+
+```{r}
+summary(nutrient_z)
+summary(nutrient_mmn)
+```
+
+```{r}
+# 첫번째 방법
+nutrient_mmn <- 
+  mutate(nutrient_mat, 
+         energy = MMN(energy),
+         protein = MMN(protein),
+         fat = MMN(fat),
+         calcium = MMN(calcium),
+         iron = MMN(iron))
+summary(nutrient_mmn)
+```
+
+```{r}
+# 두번째 방법
+nutrient_mmn <- nutrient_mat
+for (i in 1:ncol(nutrient_mat)){
+  nutrient_mmn[,i] <- MMN(nutrient_mat[,i])
+}
+
+summary(nutrient_mmn)
+```
+
+따라서, 이럴 때는 각각의 벡터마다 동일한 함수를 반복해서 적용해줘야 한다. 
+
+하나의 변수를 select 해서 for loop을 이용해서 함수를 
+적용할 수도 있겠지만, 이와 같은 작업을 쉽게 처리할 수 있게 해주는 함수로 `apply`함수가 있다.
+
+`apply`함수는 매트릭스를 인자로 받아와서 행단위 혹은 열단위로 지정한 작업(함수)을 수행 하도록 한다.
+
+여기서 분석단위를 1로 넣으면 행(row) 단위, 
+2로 넣으면 열(column) 단위로 지정한 함수를 적용한다. 
+```
+apply(matrix, MARGIN = 1 or 2, 지정함수)
+```
+
+우리가 해야될 작업은 열(column) 단위로, MMN 함수를 실행해야 하므로 아래와 같이 `apply`함수를 적용할 수 있다.
+```{r}
+# 틀린 방법
+nutrient_mmn <- MMN(nutrient_mat) # 실행 X
+
+# 맞는 방법
+nutrient_mmn <- 
+  apply(nutrient_mat, MARGIN = 2, MMN) %>%
+  round(digit = 3)
+
+summary(nutrient_mmn)
+View(nutrient_mmn)
+```
+
+이제 각 변수별로 0~1로 정규화되었음을 알 수 있다.
+```{r}
+summary(nutrient_mmn)
+```
+
+food 변수까지 추가해서 보도록 하자.
+apply 함수도 산출값을 매트릭스로 반환하므로 다시 dataframe으로 변환한다.
+
+character vector인 food 변수와 numeric vector인 nutrient_mmn을 그냥 `cbind` 하면,
+모든 값이 character가 된다. 
+이럴때는 cbind.data.frame으로 한번에 처리하도록 한다. 
+
+```{r}
+nutrient_mmn <- cbind.data.frame(food, nutrient_mmn)
+View(nutrient_mmn)
+```
+
+
+### 1-2-3. 정규화된 데이터로 거리 구하기 
+
+1) z-scoring 데이터로 거리 구하기 
+
+먼저, 수치형 데이터 매트릭스를 만들어 준다. 
+```{r}
+nutrient_z <- scale(nutrient_mat)
+View(nutri_mat)
+``` 
+
+`dist()`함수를 이용해서 거리 행렬을 구해준다. 
+```{r}
+dist_mat_z <- 
+  dist(nutrient_z, method = "euclidean") %>% 
+  as.matrix() %>% 
+  as.data.frame() %>% 
+  round(digit = 3)
+```
+
+```{r}
+names(dist_mat_z) <- 
+  c(nutrient$food)
+row.names(dist_mat_z) <- 
+  c(nutrient$food)
+```
+
+2) MMN 데이터로 거리 구하기
+```{r}
+nutrient_mmn <- 
+  apply(nutrient_mat, MARGIN = 2, MMN) %>%
+  round(digit = 3)
+
+dist_mat_mmn <- 
+  dist(nutrient_mmn, method = "euclidean") %>% 
+  as.matrix() %>% 
+  as.data.frame() %>% 
+  round(digit = 3)
+```
+
+변수명을 바꿔줘 보자.
+```{r}
+names(dist_mat_mmn) <- 
+  c(nutrient$food)
+row.names(dist_mat_mmn) <- 
+  c(nutrient$food)
+```
+
+---
+
+# 3. 군집분석 : K-means 클러스터링
+
+## 3-1. 예제#1 : 소비자 RFM 기반 군집분석
+
+R : Recency - 가장 최근에
+F : Frequency - 가장 많은 횟수로
+M : Monetary - 가장 많은 돈을 쓴 
+고객이 가치 있는 "고객"이다. 
+
+```{r}
+online_retail <- 
+  read_csv("./data/OnlineRetail.csv")
+```
+
+```{r}
+table(online_retail$Country)
+```
+
+```{r}
+UK_only <- 
+  online_retail %>%
+  filter(Country == 'United Kingdom') %>% 
+  na.omit()
+```
+
+```{r}
+library(lubridate)
+
+UK_only$InvoiceDate <- 
+  UK_only$InvoiceDate %>% ymd_hm()
+
+max(UK_only$InvoiceDate)
+
+unique(UK_only$CustomerID) %>% length()
+```
+
+### 3-1-1. 군집화 변수 선정
+
+#### Recency : 최근에 한 거래가 언제인가?
+```{r}
+Recency <- 
+  UK_only %>% 
+  group_by(CustomerID) %>%
+  summarise(last_activity = max(InvoiceDate)) %>% # 각 고객의 마지막 활동
+  mutate(last_invoice = max(last_activity)) # 각 고객의 마지막 활동 중 가장 최근 활동 
+```
+
+```{r}
+Recency$recency <- 
+  (Recency$last_invoice - Recency$last_activity)
+
+Recency <-
+  Recency %>% 
+  mutate(recency = recency/(60*60*24)) # Day로 바꾸기
+
+Recency$recency <- 
+  round(Recency$recency) %>% 
+  as.numeric()
+```
+
+```{r}
+summary(Recency$recency)
+```
+
+```{r}
+ggplot(Recency, aes(x = recency)) +
+  geom_histogram() +
+  ylab("고객 수") + 
+  xlab("가장 최근 거래일")
+```
+
+#### Frequency : 얼마나 자주 거래하는가?
+
+frequency를 오로지 방문 횟수로만 보겠다.
+=> group_by 기준이 CustomerID로 빈도만 구하면 됨
+
+frequency를 장바구니에 담았던 품목 갯수
+=> group_by 기준이 CustomerID, InvoiceID, StockCode 되고, 이때 빈도를 구해준 다음, 다시 CutomerID로 그룹핑해서 Sum
+
+frequency를 제품마다 구매한 갯수까지 고려하고 싶다. 
+
+```{r}
+Frequency <- 
+  UK_only %>%
+  group_by(CustomerID) %>%
+  summarise(freq = n())
+```
+
+```{r}
+summary(Frequency$freq)
+```
+
+## Monetary : 얼마나 지불하는가?
+
+```{r}
+Money <- 
+  UK_only %>%
+  mutate(sales = Quantity * UnitPrice) %>%
+  filter(sales > 0) %>%
+  group_by(CustomerID) %>%
+  summarise(money = sum(sales))
+```
+
+```{r}
+summary(Money$money)
+```
+
+#### 고객 번호를 기준으로 Data를 join하자.
+
+데이터 크기를 보면, 
+Recency가 Frequency와 Money에 비해 적은 것을 알 수 있다. 
+
+즉, Recency를 구하기 위한 Date 변수가 결측치인 
+고객들이 있었던 것이다. 
+
+세 변수 모두 사용하기 위해 가장 적은 Recency에 맞추도록하자. 
+
+이를 위해서는 `left_join` 혹은 `inner_join` 함수를 쓸 수 있다.
+
+```{r}
+UK_RFM <- left_join(Recency, Frequency)
+UK_RFM <- left_join(UK_RFM, Money)
+```
+
+이제 날짜 변수는 필요없으므로 제거하도록 하자.
+
+```{r}
+UK_RFM <- select(UK_RFM, 
+                 CustomerID, 
+                 recency, 
+                 freq, 
+                 money)
+summary(UK_RFM)
+```
+
+이제 보니 고객번호가 없는 하나의 데이터가 아웃라이어임을 알 수 있다. 
+제거하도록 하자.(아마도 총계 데이터인 듯하다.)
+
+```{r}
+UK_RFM <- UK_RFM %>% na.omit
+```
+
+```{r}
+UK_RFM <- filter(UK_RFM, money > 0)
+summary(UK_RFM)
+```
+
+군집화 변수는 `recency`, `freq`, `money` 3개 변수이다. 
+딱 봐도 정규화가 필요해 보이는 자료이다. 
+
+Min-Max 정규화를 실시해보자.
+
+```{r}
+ID <- UK_RFM$CustomerID
+UK_RFM <- UK_RFM[,-1]
+```
+
+MMN은 열 단위로 적용되어야 함을 기억하자.
+`apply` 함수를 써야 한다.
+```{r}
+MMN <- 
+  function(x) {
+    
+    rescaled_x <- (x - min(x))/(max(x) - min(x))
+    
+    return(rescaled_x)
+  }
+```
+
+
+```{r}
+RFM_norm <- 
+  apply(UK_RFM, 2, MMN) %>% 
+  as.data.frame()
+```
+
+```{r}
+RFM_norm <- 
+  scale(UK_RFM) %>% as.data.frame()
+```
+
+```{r}
+summary(RFM_norm)
+```
+
+### 3-1-2. 최적 군집 수는 어떻게 결정할까?
+
+k-means 알고리즘에서는 k의 수를 결정해줘야 한다. 
+
+```
+- `휴리스틱` 접근법 : 인간의 직감, 경험 등에 의한 판단
+
+- 직접 `군집 내 거리제곱합` 계산 방법
+: "동일한 군집 내 개체들 간 거리는 `최소화`,
+   서로 다른 군집 간 거리는 `최대화`"가 됐을 때, 
+   군집분석이 잘됐다고 말할 수 있음.
+
+- NBClust (X)
+```
+
+#### 직접 '군집 내 거리제곱합(WSS)' 계산하기
+
+다음은 `군집 내 거리제곱합`을 기준으로 최적의 K 수를 찾아보자.
+이 방법은 따로 패키지가 없으므로 다음과 같이 사용자 함수를 정의해줘야 한다.
+아래 첫 줄의 `nc=15`는 최대 15개까지 시뮬레이션 해보겠다는 의미이며, 
+시뮬레이션할 K의 수를 늘리고 싶으면 `15`를 수정하면 된다.
+
+```{r}
+WssPlot <- 
+  function(data, nc=20, seed=1234){
+  wss <- (nrow(data)-1)*sum(apply(data,2,var))
+  for (i in 2:nc){
+    set.seed(seed)
+    wss[i] <- sum(kmeans(data, centers=i)$withinss)}
+  plot(1:nc, wss, type="b", xlab="Number of Clusters",
+       ylab = "군집 내 거리제곱합")}
+```
+
+위에 정의된 사용자함수를 이용해 `군집 내 거리제곱합` 그래프를 그려보자.
+
+그래프 결과의 의미를 살펴보면, k의 수가 늘어날 때, 기울기의 변화가 가파르면
+K의 수가 증가하는 것이 더 최적이라는 의미를 나타낸다. 
+
+아래 그래프에서 `K=3`때 까지는 군집 수가 유의하게 변하다가 `k=4`부터 뚜렷한 변화가
+없는 것을 알 수 있다. 즉, 최적 K는 3개 정도가 적당할 것이라고 결론을 내릴 수 있다.
+
+```{r}
+WssPlot(RFM_norm)
+```
+
+### 3-1-3. K-means 클러스터링 실시
+
+군집분석은 내장함수인 `kmeans`를 쓸수도 있고, 여러 패키지를 활용할수도 있다. 
+
+간단하게 군집만 확인한다면 `kmeans`도 유용하지만, 
+군집결과를 시각화하기 위해 `factoextra`패키지의 
+`eclust`함수를 이용하도록 하자. 
+
+먼저 패키지를 설치해주고, 불러오도록 한다.
+```
+install.package("factoextra")
+```
+
+```{r}
+library(factoextra)
+```
+
+주의할 점은 K-means clustering의 초기값은 항상 random하게 결정되고, 소속집단이 더 이상 바뀌지
+않을 때까지 반복하므로 할때마다 결과 혹은 군집 번호가 바뀔 수 있다. 
+
+따라서 seed 를 설정해줘야 동일한 결과를 반복해서 얻을 수 있다. 
+
+`eclust()`는 클러스터링 결과를 클러스터 기준변수들을 
+`차원축소`를 통해 2차원 공간에 시각화 해준다. 
+```{r}
+clust_result <- 
+  eclust(RFM_norm, 
+         seed = 1234, 
+         "kmeans", 
+         k = 10)
+```
+
+### 3-1-4. 군집 할당
+```{r}
+table(clust_result$cluster)
+```
+
+```{r}
+RFM_norm$cluster <- clust_result$cluster
+UK_RFM$cluster <- clust_result$cluster
+```
+
+### 3-1-5. 군집 Profiling
+
+군집 프로파일링을 ggplot으로 해보자.
+```{r}
+RFM_summary <-
+  RFM_norm %>%
+  group_by(cluster) %>%
+  summarise(n_customer = n(),
+            recency = median(recency),
+            freq = median(freq),
+            money = median(money))
+```
+
+```{r}
+library(tidyr)
+RFM_long <- gather(RFM_summary, 
+                   recency, 
+                   freq, 
+                   money, 
+                   key = "var", 
+                   value = "value")
+RFM_long$cluster <- 
+  RFM_long$cluster %>% 
+  as.factor()
+```
+
+```{r}
+ggplot(RFM_long, aes(x = var, y = value)) +
+  geom_bar(position = "dodge", stat = "identity") +
+  facet_wrap(~cluster, scale = "free")
+```
+
+---
+
+*** 여기부터 수업합니다. ***
+
+## 3-2. 예제#2 : 야구 선수 유망주 발굴을 위한 군집분석
+
+```{r}
+library(factoextra)
+```
+
+```{r}
+kbo <- read_csv("./data/KBO_2019.csv", 
+                locale = locale("ko", encoding = "EUC-KR"))
+```
+
+```{r}
+kbo_mat <- kbo[,4:ncol(kbo)]
+```
+
+z-scoring으로 데이터를 표준화하자.
+```{r}
+kbo_mat_norm <- 
+  scale(kbo_mat, center = TRUE) %>% 
+  as.data.frame()
+```
+
+```{r}
+WssPlot(kbo_mat_norm)
+```
+
+```{r}
+clst_result <- eclust(kbo_mat_norm, 
+                      seed = 1234,
+                      "kmeans", 
+                      k = 6)
+```
+
+```{r}
+table(clst_result$cluster)
+```
+
+원래 데이터에 cluster 변수를 붙이고 
+각 클러스터 별 특성을 살펴보자. 
+```{r}
+kbo_mat$cluster <- clst_result$cluster
+kbo_mat$name <- kbo$name
+```
+
+```{r}
+kbo_summary <- 
+  kbo_mat %>%
+  group_by(cluster) %>%
+  summarise(n_players = n(),
+            AVG = mean(AVG), 
+            G = mean(G),
+            R = mean(R), 
+            H = mean(H),
+            HR = mean(HR))
+```
+
+
+normalized 데이터를 이용해
+시각화를 해보자. 
+```{r}
+kbo_mat_norm$cluster <- clst_result$cluster
+kbo_mat_norm$name <- kbo$name
+```
+
+```{r}
+kbo_summary <- 
+  kbo_mat_norm %>%
+  group_by(cluster) %>%
+  summarise(n_players = n(),
+            AVG = mean(AVG), 
+            G = mean(G),
+            R = mean(R), 
+            H = mean(H),
+            HR = mean(HR))
+
+kbo_long <- gather(kbo_summary, 
+                    AVG, 
+                    G, 
+                    R,
+                    H,
+                    HR, 
+                    key = "var", 
+                    value = "value")
+```
+
+```{r}
+ggplot(kbo_long, aes(x = var, y = value)) +
+  geom_bar(position = "dodge", stat = "identity") +
+  facet_wrap(~cluster, scale = "free", nrow = 3)
+```
+
+---
+
+# 4. 잠재계층분석(LCA)(예제 : 외식 소비자 세분화)
+
+본 실습에 활용될 자료는 2013년부터 한국농촌경제연구원에서 발표하는 '식품소비행태조사'의 2016년 data이다.
+
+## 4-1. 데이터 준비
+
+본 자료는 2016년 식품소비행태조사의 '성인가구원' 자료를 활용해 적절히 가공한 자료이다.
+
+```{r}
+krei <- read.csv("./data/krei_2016.csv")
+```
+
+```
+- sex : 성별
+- age : 나이
+- height : 키(cm)
+- weight : 몸무게(kg)
+- income : 소득
+
+- breakfast_1 : 최근 1주일 간 아침을 "집에서 먹은" 횟수
+- breakfast_2 : 최근 1주일 간 아침을 "사먹은" 횟수
+- breakfast_2 : 최근 1주일 간 아침을 "거른" 횟수
+
+- lunch_1 : 최근 1주일 간 점심을 "집에서 먹은" 횟수
+- lunch_2 : 최근 1주일 간 점심을 "사먹은" 횟수
+- lunch_3 : 최근 1주일 간 점심을 "거른" 횟수
+
+- dinner_1 : 최근 1주일 간 저녁을 "집에서 먹은" 횟수
+- dinner_2 : 최근 1주일 간 저녁을 "사먹은" 횟수
+- dinner_3 : 최근 1주일 간 저녁을 "거른" 횟수
+
+- satisfaction : 식생활 만족도(1~5점)
+- n_diningout : 월 평균 외식 횟수(회)
+- monthly_exp : 월 평균 외식 지불액(원)
+- per_exp : 외식단가(원)
+- n_delivery : 월 평균 배달/테이크아웃 횟수
+- delivery_exp : 월 평균 배달/테이크아웃 지불액
+
+군집 기준변수 => `factor`타입 이어야 함
+- foodexp : 월 평균 외식지출액
+- foodfreq : 월 평균 외식빈도
+- foodsel : 주요 외식선택기준
+- foodmotiv : 주요 외식동기
+- foodplace : 주요 외식장소
+```
+
+## 4-2. 군집 기준변수 탐색
+
+```{r}
+krei_lca_data <- 
+  select(krei, id, foodexp:foodplace) %>%
+  na.omit()
+nrow(krei_lca_data)
+```
+
+```{r}
+str(krei_lca_data)
+
+krei_lca_data$foodexp <- 
+  as.factor(krei_lca_data$foodexp)
+
+krei_lca_data$foodfreq <- 
+  as.factor(krei_lca_data$foodfreq)
+
+krei_lca_data$foodsel <- 
+  as.factor(krei_lca_data$foodsel)
+
+krei_lca_data$foodmotiv <- 
+  as.factor(krei_lca_data$foodmotiv)
+
+krei_lca_data$foodplace <- 
+  as.factor(krei_lca_data$foodplace)
+```
+
+```{r}
+krei_other_data <- 
+  select(krei, -c(foodexp:foodplace))
+
+krei_lca_data <- 
+  left_join(krei_lca_data, krei_other_data, by = "id")
+```
+
+```{r}
+krei_lca_var <- 
+  select(krei_lca_data, 
+         foodexp, 
+         foodfreq,
+         foodsel,
+         foodmotiv,
+         foodplace)
+```
+
+```{r}
+summary(krei_lca_var)
+```
+
+## 4-3. 최적 클래스 수(세분시장 수)의 결정
+
+우선 필수 패키지를 불러온다. lca는 `poLCA` 패키지를 이용한다.
+
+```
+install.packages("poLCA")
+```
+
+```{r}
+library(poLCA)
+```
+
+```{r}
+krei_formula <- 
+  cbind(foodexp, foodfreq, foodsel, foodmotiv, foodplace) ~ 1
+
+# formula <- 
+#   cbind(var1, var2, var3, var4, var5) ~ 1
+```
+
+A,B,C,D,E,F
+```
+my_formula <- cbind(A,B,C,D,E,F) ~ 1
+```
+
+```{r}
+krei_lca_list <- c()
+```
+
+`for 문`을 이용해 분석을 실시한 결과가 비어있는 list에 하나씩 축적되도록 한다.
+```{r}
+for (k in 1:20){
+  
+  krei_lca_list[[k]] <- 
+    poLCA(krei_formula, # formula
+          krei_lca_var, # 타겟데이터 
+          nclass = k, 
+          verbose = FALSE) # 중간 결과 프린트 할지 말지
+}
+```
+
+이제 aic와 bic만 따로 모아서 위에서 생성한 20개의 모형 중 최적의 모형을 찾아보자.
+
+이 작업 역시 `for 문`을 이용해보고,
+KNN에서 k를 찾기 위해 빈 데이터 프레임을 만들었듯 빈 데이터 프레임을 만들어보자. 
+```{r}
+optimal_k_result <- 
+  data.frame(k = NULL,
+             aic = NULL,
+             bic = NULL)
+
+krei_lca_list[[2]]$aic
+krei_lca_list[[2]]$bic
+```
+
+`krei_list`의 각 결과에서 aic와 bic만 뽑아 
+각각 `krei_aic`와 `krei_bic`에 축적한다.
+```{r}
+for (k in 1:13){
+  result <- data.frame(k = k,
+                       aic = krei_lca_list[[k]]$aic,
+                       bic = krei_lca_list[[k]]$bic)
+  optimal_k_result <- rbind(optimal_k_result, result)
+}
+```
+
+결과를 보도록 하자.
+```{r}
+optimal_k_result
+```
+
+AIC 와 BIC의 변화를 시각화해보자.
+```{r}
+optimal_k_long <- gather(optimal_k_result,
+                         aic,
+                         bic,
+                         key = "var",
+                         value = "value")
+
+ggplot(data = optimal_k_long, 
+       aes(x = k, y = value, color = var)) +
+  geom_line() +
+  geom_point() +
+  scale_x_continuous(breaks = c(1:20))
+```
+
+**AIC**값은 클래스 수가 늘어날수록 계속 감소해 최적의 모형으로 수렴하지 않고 있다.
+**BIC**를 기준으로 하면, 최적 세분집단의 수는 **5개** 인 것을 알 수 있다.
+
+최적 세분집단의 수는 5개가 가장 적합한 것으로 나타났으므로 `nclass=5`인 모형을 가져와서 최적 모형(optimal model)으로 선정한다.
+
+```{r}
+krei_optimal <- krei_lca_list[[5]]
+View(krei_optimal)
+krei_optimal$probs
+```
+
+## 4-4. 항목반응행렬(Item-reponse matirx)
+
+이제 최적집단의 수가 `5개`인 모형에서 각 집단의 각 항목에 대한 항목반응행렬을 
+만들어보자.
+
+```{r}
+krei_item_response <- as.data.frame(krei_optimal$probs)
+```
+
+보기 좋게 하기위해 2가지 작업을 해보자.
+
+**1) 소수점 세번째 자리까지만 표시해 주기 위해 `round` 함수를 쓴다.**
+```{r}
+krei_item_response <- 
+  round(krei_item_response, digit=3)
+```
+
+**2) `행(row)`과 `열(column)`을 바꿔주도록 하자.**
+t는 transpose의 약자이다. 
+```{r}
+krei_item_resp_t <- 
+  t(krei_item_response)
+```
+
+이제, 완성된 항목반응행렬(item-response matrix)을 살펴보자.
+```{r}
+View(krei_item_resp_t)
+```
+
+## 4-5. 항목반응행렬 내보내기
+
+먼저, 항목반응행렬을 `Data frame`으로 변환한다.
+```{r}
+class(krei_item_resp_t)
+krei_item_resp_df <- 
+  as.data.frame(krei_item_resp_t)
+```
+
+```{r}
+write.csv(krei_item_resp_df, "./krei_item_resp.csv")
+```
+
+## 4-6. Class 크기 확인하기
+
+5개의 세분시장의 크기를 살펴보자. krei_optimal이라고 정의된 LCA 분석결과에서 `P`를 뽑아보자.
+5개의 세분시장 중 시장1이 가장 비중을 차지하고, 나머지 시장은 비슷한 크기를 나타내고 있다.
+
+```{r}
+round(krei_optimal$P, digit=3)
+```
+
+## 4-7. 클래스(군집) 별 프로파일링
+
+원본 데이터 파일에 추정한 Class를 붙여보자.
+```{r}
+krei_lca_data$class <- as.factor(krei_optimal$predclass)
+```
+
+```{r}
+table(krei_lca_data$class)
+```
+
+```{r}
+krei_summary <-
+  krei_lca_data %>%
+  group_by(class) %>%
+  summarise("나이" = mean(age),
+            "bmi" = mean((weight/(height/100)*
+                            (height/100))),
+            "식생활만족도" = mean(satisfaction, 
+                            na.rm = T),
+            "월 외식횟수" = mean(n_diningout, 
+                            na.rm = T),
+            "월 외식비지출" = mean(monthly_exp, 
+                            na.rm = T),
+            "회당 지출단가" = mean(per_exp, 
+                            na.rm = T),
+            "월 평균 배달횟수" = mean(n_delivery, 
+                            na.rm = T),
+            "월 평균 배달지출" = mean(delivery_per_exp, 
+                            na.rm = T),
+            "평균 아침 거른 횟수" = mean(breakfast_3, 
+                            na.rm = T),
+            "평균 아침 사먹은 횟수" = mean(breakfast_2, 
+                            na.rm = T),
+            "평균 점심 거른 횟수" = mean(lunch_3, 
+                            na.rm = T),
+            "평균 점심 사먹은 횟수" = mean(lunch_2, 
+                            na.rm = T),
+            "평균 저녁 거른 횟수" = mean(dinner_3, 
+                            na.rm = T),
+            "평균 저녁 사먹은 횟수" = mean(dinner_2, 
+                            na.rm = T)) %>%
+  t() %>% as.data.frame()
+```

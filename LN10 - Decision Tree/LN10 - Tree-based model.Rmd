@@ -1,0 +1,556 @@
+---
+title: "LN10 - Tree-based model"
+author: "Dohyung Bang"
+output: html_document
+---
+
+```{r "setup", include = FALSE}
+knitr::opts_knit$set(root.dir = "C:/BA2021/")
+```
+
+```{r}
+library(caret) # 데이터 나눌때 / 혼동행렬
+library(readr)
+library(dplyr)
+library(ggplot2)
+```
+
+
+# 1. 의사결정나무(Decision Tree)
+
+## 1-1. 나무 알고리즘에 따른 패키지 종류 
+
+```
+install.packages("party")
+install.packages("C50")
+install.packages("rpart")
+```
+
+```
+`party` : `party` 패키지는 CHAID 알고리즘으로 Tree를 성장시킴
+`C50' : `C50` 패키지는 C5.0 알고리즘으로 Tree를 성장시킴
+`rpart` : `rpart` 패키지는 CART(Classification and regression trees) 방법론을 이용해 Tree를 성장시킴
+```
+
+우리는 주로 CART 알고리즘을 다룰 예정이므로 `rpart` 패키지만 다루도록 한다. 
+
+```{r}
+library(rpart)
+```
+
+
+## 1-2. 실습#1 : 신용등급 분류 및 예측
+(source : James et el., 2014)
+
+### 1-2-1. 데이터 준비(Data Preparation)
+
+```{r}
+credit <- read.csv("./data/Credit.csv")
+```
+
+본 데이터는 1000명의 은행 고객자료이며, 고객 속성 및 대출상환여부를 분류함으로써 잠재고객의 대출승인을 결정할 수 있는 모형을 만드는 것이 목적이다.
+
+```{r}
+str(credit)
+summary(credit)
+```
+
+```
+checking_balance : 잔고
+months_loan_duration : 대출기간
+credit_history : 신용기록
+purpose : 대출목적
+amount : 대출총액
+savings_balance : 저축잔고
+employment_duration : 고용기간
+percent_of_income : 소득비중
+years_at_residence : 거주기간
+age : 나이
+other_credit : 타 신용기록
+housing : 주택소유 여부
+existing_loans_count : 보유중인 채무
+job : 직업
+dependents : 부양자 수
+phone : 휴대폰 사용여부
+default : 기간 내 채무불이행-> 연체가 발생했는가? (YES=불이행(연체발생) / NO = 상환잘했음)
+```
+
+### 1-2-2. Train & Test set 나누기
+```{r}
+set.seed(1234)
+train_idx <- 
+  createDataPartition(1:nrow(credit), 
+                      p=.7, 
+                      list=FALSE)
+```
+
+```{r}
+credit_train <- credit[train_idx, ]
+credit_test <- credit[-train_idx, ]
+```
+
+### 1-2-3. Tree 성장시키기 / 학습(learning)
+
+의사결정나무 모형에서만큼은 `학습(Learning)` 보다는 `성장(Growing)`이라고 표현한다. 
+
+이제, `CART` 알고리즘을 이용해 의사결정 나무를 성장시켜보자.
+
+나무를 성장시키는 방법은 `rpart()`함수 내에 Formula 형태로 설명변수와 목표변수(종속변수)를 넣는다.이때, 이진 분류를 하기 위해서는 method에 `class`를 옵션으로 넣는다.
+
+```{r}
+credit_cart <- 
+  rpart(formula = default ~ ., 
+        data = credit_train, 
+        method = "class")
+```
+
+```
+lm(formula, data) # 선형회귀
+glm(formula, data, family = "binomal") # 로지스틱 
+rpart(formula, data, method = "class") # 의사결정나무(CART)
+```
+
+의사결정나무 분석결과(Output)는 15개의 List로 이루어져 있다.
+```{r}
+summary(credit_cart)
+
+plot(credit_cart)
+text(credit_cart)
+```
+
+
+참고
+```
++ 학습모형에서 모형의 Complexity가 높아지면(잔가지가 많아진다.) 학습이 잘된다. 단, 과적합(Overfitting)의 위험이 있다.
+
++ 그러므로 모형의 Complexity는 낮으면서 성능이 좋은 모형(xerror가 최소)이 우수한 모형이다.
+
++ 특히, 의사결정나무의 CART 알고리즘은 과적합의 가능성이 높으므로 Complexity를 낮추는 것(가지치기)이 중요하다.
+
++ CART 알고리즘의 과적합 가능성을 낮추기 위해 하는 작업이 `pruning`이며, 최적의 Compexity를 찾으면, 최적의 가지 수를 찾을 수 있다.
+```
+
+
+### 1-2-4. 가지치기(Pruning)
+
+여기서 가지의 수를 보기 위해서는 `cptable`을 살펴보아야 한다.
+`cptable`은 `complexity parameter table`을 의미한다.
+
+아래 table에서 `xerror`가 가장 낮으면서, 최적이라고 도출해주고 있는 가지(branch)의 수는 9개임을 알 수 있다. 
+```{r}
+credit_cart$cptable
+printcp(credit_cart)
+```
+
+가지치기를 실시한 CART 알고리즘은 다음과 같이 표현할 수 있다.
+함수는 `rpart`에 내장된 `prune()`함수를 쓰고, `CP`라는 새로운 변수를 정의하기 위해 아래와 같은 코드를 활용한다.
+
+말로 표현하면, "credit_cart 안에 cptable 중 "xerror" 칼럼이 가장 작은 때의 CP 값을 가져와라" 그리고 이를 cp_optimal로 정의한다.
+```{r}
+cp_optimal <- 
+  credit_cart$cptable[which.min(credit_cart$cptable[,"xerror"]), "CP"]
+```
+
+```{r}
+credit_cart_pruned <- 
+  prune(credit_cart, 
+        cp = cp_optimal)
+
+plot(credit_cart_pruned)
+text(credit_cart_pruned)
+```
+
+### 2-2-5. 모형평가(Model Evaluation)
+
+로지스틱이나 판별분석할 때는 predict 할 때 type = "response"라고 넣어줬는데, 의사결정나무/랜덤포레스트에서는 type = "class" 라고 넣어준다. 
+```{r}
+credit_cart_pred <- 
+  predict(credit_cart_pruned, 
+          credit_test, 
+          type = "class")
+```
+
+혼동행렬(Confusion matrix)를 만들어 분류 결과를 살펴보자.
+
+```{r}
+credit_cart_pred <- credit_cart_pred %>% factor()
+actual_default <- credit_test$default %>% factor()
+```
+
+```{r}
+confusionMatrix(credit_cart_pred,
+                actual_default, 
+                positive = "yes")
+```
+
+### 1-2-6. `More Fancy`하게 시각화(Visualization)
+
+의사결정나무를 분석하기 위한 `rpart`나 이 외에 `tree`와 같은 패키지가 제공하는 결과는 시각화가 다소 미흡하다는 단점이 있다.
+의사결정나무는 결과를 시각화하는게 매우 중요한 알고리즘인만큼 좀 더 fancy하게 시각화 할 수 있는 방법을 살펴보자.
+
+의사결정나무 시각화는 `rattle` 이라는 패키지의 `fancyrpartplot()`함수를 활용한다.
+먼저, `rattle`을 설치하고, `rattle`과 함께 `rpart.plot`, `RcolorBrewer` 패키지도 불러온다.
+
+참고로 `RcolorBrewer`는 fancy tree를 구성하기 위해 색을 선택하기 위해 불러온 패키지이다.
+
+```
+install.packages("rattle")
+install.packages("rpart.plot")
+install.packages("RColorBrewer")
+```
+
+```{r}
+library(rattle)
+library(rpart.plot)
+library(RColorBrewer)
+```
+
+```{r}
+table(credit$credit_history)
+```
+
+분류 문제 : default = yes(채무불이행 = 대출X) or no(채무이행=대출)
+```{r}
+?fancyRpartPlot
+
+fancyRpartPlot(credit_cart_pruned, cex = 0.7)
+table(credit_train$default)
+485/700
+```
+
+`fancyRpartPlot` 함수는 각 노드에 대해 3가지 정보를 나타내어 준다.
+
+#### A. NODE의 속성
+```
+각 노드는 `YES`의 속성을 가진 노드인지, `NO`의 속성을 가진 노드인지를 보여준다.
+맨 위의 노드(1번 노드)는 `NO` 즉, 채무를 이행하는 집단이라는 의미가 된다. 
+맨 마지막 노드를 살펴보면, no인 집단들은 채무를 잘 이행하는 집단, 
+yes인 집단들은 채무를 불이행하는 집단이라는 뜻이 된다. 
+```
+
+#### B. NODE 순도(Purity)
+```
+위에서 이상한 점이 하나 있다. 원래 `NO`의 속성이었는데 끝 노드에 와서는 `YES` 속성으로
+분류되는 노드도 있다. 왜 이런 것인가?
+
+이는 순도(Purity)와 관련이 있다. `fancyRpartPlot`에서 각 노드의 색깔이 다른 것은 이러한 순도(Purity)를 표현해준다.
+
+이처럼 `fancyRpartPlot`를 이용하면, 순도의 정도를 시각적으로 잘 표현할 수 있다.
+```
+
+#### C. NODE가 차지하는 비중
+```
+한편, 각 노드 아래 표시되는 00%는 해당 노드가 전체 샘플에서 얼마나 차지하는지를 나타내는 비중이다.
+
+가령 3번 노드를 살펴보면, 전체 중 55%에 해당하는 사람들이
+속해있다. 
+
+반면, 2번 노드는 45%의 사람들이 속해있고, 이중 86%가 채무이행(NO)한 사람들이 속해 있다. 
+```
+
+---
+
+< 여기부터 >
+
+# 2. 랜덤포레스트(Random Forest)
+
+```
+install.packages("randomForest")
+```
+
+```{r}
+library(randomForest) 
+```
+
+## 2-1. 예제 : 대출승인 여부 예측
+
+### 2-1-1. 데이터 세팅하기 
+
+랜덤 포레스트를 구현하기 위해서는 y변수가 반드시 factor 타입이어야 한다. 
+```{r}
+credit <- read.csv("./data/Credit.csv")
+class(credit$default)
+
+credit$default <- factor(credit$default)
+class(credit$default)
+```
+
+```{r}
+set.seed(1234)
+train_idx <- 
+  createDataPartition(1:nrow(credit), 
+                      p = 0.7, # 7:3
+                      list =  FALSE)
+credit_train <- credit[train_idx, ]
+credit_test <- credit[-train_idx, ]
+```
+
+x변수의 수는 16개  
+```{r}
+ncol(credit)
+```
+
+### 2-1-2. 랜덤포레스트 숲을 학습(=성장)
+
+`mtry`는 각각의 tree마다 몇 개의 feature를 
+사용할 것인가를 정하는 것이다. 반드시 integer
+
+Standard는 보통 `regression`의 경우, 변수갯수/3, 
+`classification`의 경우 변수 갯수의 제곱근(Square root)을 사용한다.
+
+ntree는 몇 개의 나무를 생성할 것인가를 정하는 파라미터이다.
+
+총 feature의 수는 데이터 set의 칼럼 수 -1이다.
+-1을 해주는 이유는 종속변수가 포함되어 있기 때문이다. 
+```{r}
+ncol(credit_train)
+n_var <- ncol(credit) - 1 # x변수의 수  
+sqrt(n_var)
+
+RF_credit <- 
+  randomForest(formula = default~., 
+                data = credit_train,
+                mtry = round(sqrt(n_var)), # 각 나무 당 몇개의 독립변수를 넣을 것인가?  
+                ntree = 1000, 
+                importance = TRUE, # 어떤 변수가 중요한 변수인지 
+                replace = TRUE) # 부스트래핑 할건지 
+```
+
+```{r}
+RF_credit
+```
+
+### 2-1-3. Importance 확인
+
+`varImpPlot()`는 어떤 변수가 중요했나를 보여준다. 
+```{r}
+varImpPlot(RF_credit)
+```
+
+### 2-1-4. Voting 결과 확인
+```{r}
+pred_RF <- predict(RF_credit,
+                   credit_test,
+                   type = "class")
+
+confusionMatrix(pred_RF, 
+                credit_test$default,
+                positive = "yes")
+```
+
+---
+
+# 3. 분류 모형 비교 검증하기 : `로지스틱` vs `Tree` vs `RF`
+
+## 3-1. 데이터 준비하기  
+```{r}
+hr_data <- read_csv("./data/HR_DATA.csv")
+table(hr_data$left)
+
+hr_data$left <- 
+  hr_data$left %>% 
+  factor()
+```
+
+```
+satisfaction_level : 직무 만족도 설문결과
+last_evaluation : 직전 개별 평가점수
+number_project : 참여 프로젝트 수
+average_monthly_hours : 월 평균 근무시간
+time_spend_company : 근속년수
+Work_accident : 사고 여부
+left : 이탈하면 1, 남아있으면 0 <- Y
+promotion_last_5years : 최근 5년 간 승진여부
+sales : 부서 구분
+salary : low / medium / high
+```
+
+```{r}
+train_idx <- 
+  createDataPartition(1:nrow(hr_data), 
+                     p = 0.7, 
+                     list = FALSE)
+hr_train <- hr_data[train_idx,]
+hr_test <- hr_data[-train_idx,]
+```
+
+성능비교를 위해 비어있는 성능 dataframe을 하나 만들어 주자.
+```{r}
+performance_list <- 
+  data.frame(model = NULL,
+             Accuracy = NULL, 
+             Sensitivity = NULL, 
+             Specificity = NULL)
+```
+
+## 3-2. 로지스틱 모형
+
+### 3-2-1. 학습(Learning)
+```{r}
+logistic_model <- glm(left~.,
+                      data = hr_train, 
+                      family = "binomial")
+```
+
+### 3-2-2. 예측(Predicting)
+```{r}
+pred_left <- predict(logistic_model, 
+                     hr_test,
+                     type = "response")
+```
+
+```{r}
+pred_left_class <- ifelse(pred_left > 0.5, 1, 0)
+```
+
+### 3-2-3. 평가(Evaluation)
+
+```{r}
+pred_left_class <- pred_left_class %>% factor()
+actual_left <- hr_test$left %>% factor()
+```
+
+```{r}
+confusionMatrix(pred_left_class, actual_left)
+```
+
+```{r}
+conf_mat <- 
+  confusionMatrix(pred_left_class, actual_left)
+```
+
+```{r}
+logistic_perf <- 
+    data.frame(model = "logistic", 
+               Accuracy = conf_mat[["overall"]][["Accuracy"]],
+               Sensitivity = conf_mat[["byClass"]][["Sensitivity"]], 
+               Specificity = conf_mat[["byClass"]][["Specificity"]])
+View(logistic_perf)
+
+performance_list <- rbind(performance_list, logistic_perf)
+```
+
+## 3-3. `CART` 알고리즘
+
+### 3-3-1. Tree 성장시키기 
+```{r}
+library(rpart)
+hr_cart <- 
+  rpart(formula = left~., 
+        data = hr_train, 
+        method = "class")
+```
+
+### 3-3-2. 가지치기(Pruning)
+
+```{r}
+optimal_cp <- 
+  hr_cart$cptable[which.min(hr_cart$cptable[,"xerror"]), "CP"]
+
+hr_cart_pruned <- 
+  prune(hr_cart, 
+        cp = optimal_cp)
+```
+
+### 3-3-3. 모형평가(Model Evaluation)
+
+```{r}
+pred_left_class <- 
+  predict(hr_cart_pruned, 
+          hr_test, 
+          type = "class")
+```
+
+혼동행렬(Confusion matrix)를 만들어 분류 결과를 살펴보자.
+
+```{r}
+pred_left_class <- pred_left_class %>% factor()
+actual_left <- hr_test$left %>% factor()
+```
+
+```{r}
+confusionMatrix(pred_left_class, actual_left)
+```
+
+```{r}
+conf_mat <- 
+  confusionMatrix(pred_left_class, actual_left)
+```
+
+```{r}
+cart_perf <- 
+    data.frame(model = "cart", 
+               Accuracy = conf_mat$overall[1],
+               Sensitivity = conf_mat$byClass[1], 
+               Specificity = conf_mat$byClass[2])
+
+performance_list <- rbind(performance_list, cart_perf)
+```
+
+### 3-3-4. 시각화(Visualization)
+
+```{r}
+fancyRpartPlot(hr_cart_pruned, cex=0.5)
+```
+
+## 3-4. 랜덤포레스트(Random Forest) 
+
+### 3-4-1. 랜덤포레스트 Fitting
+```{r}
+ncol(hr_train)
+n_var <- ncol(hr_train)-1
+RF_model <- 
+  randomForest(left~., 
+              data=hr_train,
+              mtry = round(sqrt(n_var)), 
+              ntree = 500)
+```
+
+### 3-4-2. Voting 결과 확인
+
+```{r}
+varImpPlot(RF_model)
+```
+
+```{r}
+pred_left_class <- 
+  predict(RF_model, hr_test, type = "class")
+```
+
+```{r}
+pred_left_class <- pred_left_class %>% factor()
+actual_left <- hr_test$left %>% factor()
+```
+
+```{r}
+confusionMatrix(pred_left_class, actual_left)
+```
+
+```{r}
+conf_mat <- 
+  confusionMatrix(pred_left_class, actual_left)
+```
+
+```{r}
+RF_perf <- 
+    data.frame(model = "RandomForest", 
+               Accuracy = conf_mat$overall[1],
+               Sensitivity = conf_mat$byClass[1], 
+               Specificity = conf_mat$byClass[2])
+
+performance_list <- rbind(performance_list, RF_perf)
+```
+
+## 3-5. 성능 비교 
+
+```{r}
+library(tidyr)
+perf_long <- 
+  performance_list %>%
+  gather(Accuracy:Specificity, key = "var", value = "value")
+```
+
+```{r}
+ggplot(perf_long, aes(x = var, y = value, fill = model)) + 
+  geom_bar(position = "dodge", stat = "identity")
+```
