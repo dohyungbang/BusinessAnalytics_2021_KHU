@@ -1,0 +1,1135 @@
+---
+title: "LN#05 - 데이터 시각화 (Data Visualization)"
+output:
+  word_document
+---
+
+# 작업 환경 설정하기
+```{r "setup", include = FALSE}
+knitr::opts_knit$set(root.dir = "C:/BA2021")
+```
+
+# 실습 패키지 불러오기
+
+```
+install.packages("ggplot2")
+```
+
+```{r}
+library(ggplot2) # 시각화 패키지 
+library(tidyr) # shape 바꾸는 패키지
+library(dplyr) # data핸들링 패키지
+library(readr) # 데이터 불러오기/쓰기 패키지
+library(lubridate) # 날짜변수 다루는 패키지 
+```
+
+---
+
+# 1. `Factor` 변수 다루기 
+
+```
+- 1 = 강북 / 2 = 강남 / 3 = 제주 => 사전에 정의된 범주
+- 1 = 52명 / 2 = 48명 / 3 = 0명 => 실제 관측된 값
+```
+
+위 경우에서 `제주`는 실제 관측되지 않았지만,
+`factor`형 변수에서는 `제주`라는 범주가 사라지지 않는다. 
+
+R에서 팩터형은 범주형 변수에 사용되는데, 
+범주형 변수(Categorical variable)란 가질 수 있는 값이 미리 고정되고 또 알려진 변수를 말한다.
+
+특히, 시각화를 하다보면 범주형 변수(팩터형 변수)가 문제되는 경우가 다수 발생한다. 
+
+범주형은 개념적으로 정의된 변수이므로 외형은 `수치(Numeric)` 일수도, `문자(Character)`일수도 있다.
+
+
+Jan, Mar, Apr, Dec
+```{r}
+a <- c("Dec", "Apr", "Jan", "Mar")
+class(a)
+```
+
+정렬을 해보면 우리가 원하는 순서대로 정렬되지 않는다는 것을 알 수 있다.
+```{r}
+sort(a)
+```
+
+이럴때 Factor형을 이용하면, 문자의 알파벳 순과 상관없이 팩터의 순서(level)대로 정렬되므로 유용하다.
+
+```{r}
+month_levels <- c("Jan", "Feb", "Mar", "Apr", 
+                  "May", "Jun", "Jul", "Aug", 
+                  "Sep", "Oct", "Nov", "Dec")
+```
+
+이제 위의 문자열을 팩터형으로 정의하고 다시 정렬해보자.
+```{r}
+b <- factor(a, levels = month_levels)
+```
+
+```{r}
+class(a)
+class(b)
+```
+
+```{r}
+sort(a)
+sort(b)
+```
+
+
+```{r}
+region <- c("강북", "강남")
+region_factor <- factor(region, 
+                        levels = c("강북", 
+                                   "강남", 
+                                   "제주"))
+region
+region_factor
+```
+
+`levels()` 함수를 이용해서 factor 변수들이 지니고 있는 level을 확인할 수 있다. 
+```{r}
+levels(region_factor)
+levels(b)
+```
+
+우리가 원하는 순서대로 정렬된 것을 알 수 있다.
+```{r}
+sort(b)
+```
+
+```{r}
+grade <- c("very bad", 
+           "bad", 
+           "normal", 
+           "good", 
+           "very good")
+```
+
+```{r}
+obs <- c("good", "normal", "bad", "very bad")
+sort(obs)
+```
+
+```{r}
+obs_factor <- factor(obs, levels = grade)
+```
+
+```{r}
+sort(obs_factor)
+```
+
+만약 어떤 변수가 정의된 level에 포함되지 않으면 NA값을 반환한다.
+```{r}
+c <- c("Dec", "Jan", "Mac", "Apr")
+factor(c, levels = month_levels)
+```
+
+만약, 실제 관측된 범주만을 level로 취하려면 `levels` 옵션을 제외한다.
+
+```{r}
+a <- c("Dec", "Apr", "Jan", "Mar")
+factor(a)
+
+factor(a, levels = c("Jan", "Mar", "Apr", "Dec")) %>% 
+  sort()
+```
+
+관측된 순서대로 level을 설정하려면 팩터 생성 시 level에 `unique` 값을 넣어준다. 
+```{r}
+a <- c("Jan","Apr", "Mar", "Jan", "Dec", 
+       "Apr", "Dec", "Jan", "Mar", "Apr")
+unique(a)
+```
+
+```{r}
+factor(a)
+factor(a, levels = unique(a))
+```
+
+가장 중요한 Point
+- 변수 중 범주형인데 숫자로 범주를 구분하는 경우, 
+숫자가 Numeric 이거나 Integer일 경우가 많다. 
+- 시각화 할때만큼은 숫자범주가 Numeric 이거나 Integer인 경우, 
+반드시 factor 타입으로 변경해준다. 
+
+---
+
+# 2. `ggplot` 이용하기 
+
+R 시각화의 레시피가 모두 담겨있다. 
+시각화는 좋은 Tool 이지만 모든 문법을 외우고 있기란 매우 힘들다. 
+
+따라서, 처음부터 모든 내용을 숙지하려기 보다는 필요할 때마다 
+Cookbook을 통해 필요한 부분을 매꿔나가는 것이 정신건강에 이롭다.
+
+
+## 2-1. ggplot 구조 이해하기
+
+실제 함수 구현을 통해 구조를 이해해 보자.
+먼저 패키지를 설치 및 불러온다.
+
+```
+install.packages("ggplot2")
+```
+```{r}
+library(ggplot2)
+```
+
+### 2-1-1. data layer
+```{r}
+toyota <- read_csv("./data/toyotaCorolla.csv")
+```
+
+```{r}
+ggplot(data = toyota)
+ggplot(toyota)
+```
+
+### 2-1-2. + aesthetics layer(미적 요소 레이어)
+```{r}
+ggplot(data = toyota, aes(x = KM, y = Price))
+```
+
+### 2-1-3. + 기하 요소(geometries layer)
+```{r}
+ggplot(data = toyota, aes(x = KM, y = Price)) +
+  geom_point() # scatter plot
+```
+
+```{r}
+ggplot(data = toyota, aes(y = Price)) +
+  geom_boxplot() # box plot 
+```
+
+```{r}
+ggplot(data = toyota, aes(x = Price)) +
+  geom_histogram() # 
+```
+
+### 2-1-4. + facets(패싯)
+
+facets은 하나의 캔버스에 여러 기준을 놓고 Plotting을 하기 위한 부가적인 문법요소로 `그룹별` 혹은 `특정 범주별`로 aesthetic 요소 간 관계를 비교하고자 할 때, 활용할 수 있다.
+
+```
+facet_grid()
+facet_wrap()
+```
+
+```{r}
+ggplot(data=toyota, aes(x=Age, y=Price)) +
+  geom_point() +
+  facet_grid(FuelType~.) # X는 항상 정의가 되어야 함.
+
+ggplot(data=toyota, aes(x=Age, y=Price)) +
+  geom_point() +
+  facet_grid(~FuelType)
+```
+
+```{r}
+ggplot(data=toyota, aes(x=Age, y=Price)) +
+  geom_point() +
+  facet_grid(Doors ~ Automatic)
+```
+
+```{r}
+ggplot(data=toyota, aes(x=Age, y=Price)) +
+  geom_point() +
+  #facet_grid(~Doors)
+  facet_wrap(~Doors)
+```
+
+### 2-1-5. + statistics
+
+때로는 데이터의 전반적 추세를 `라인`으로 표시한다거나 데이터의 신뢰구간을 `구간`으로 표시하고자 할 때가 있다.
+이때, 통계적 분석결과를 기존에 그려진 `plot` 위에 한층 더 그릴 수 있다.
+
+통계적 결과의 추가는 `stat_smooth()` 혹은 `geom_smooth()`를 쓴다.
+
+```{r}
+ggplot(data=toyota, aes(x=Age, y=Price)) +
+  geom_point() +
+  facet_grid(FuelType ~ .) +
+  stat_smooth() # or geom_smooth()
+```
+
+```{r}
+# 선형 Regression line 추가하기 
+ggplot(data=toyota, aes(x=Age, y=Price)) +
+  geom_point() +
+  facet_grid(FuelType ~ .) +
+  geom_smooth(method = "lm") 
+# lm : linear model(선형모델) = 선형회귀모형
+```
+
+### 2-1-6. + Coordinates
+
+`좌표계(coordinates)`의 추가는 그래프 내 표현되는 각종 요소들의 범위를 지정하는 것으로 가령,
+X축 혹은 Y축의 범위를 조절할 때 쓰인다.
+
+```{r}
+ggplot(data=toyota, aes(x=Age, y=Price)) +
+  geom_point() +
+  facet_grid(FuelType ~ .) +
+  geom_smooth(method = "lm") +
+  xlim(0, 100) 
+  #coord_cartesian(xlim = c(0, 100))
+```
+
+```{r}
+ggplot(data=toyota, aes(x=Age, y=Price)) +
+  geom_point() +
+  facet_grid(FuelType ~ .) +
+  geom_smooth(method = "lm") +
+  ylim(0, 50000) + 
+  xlim(-20, 80)
+  # coord_cartesian(ylim = c(0, 50000), 
+  #                 xlim = c(-20, 80))
+```
+
+### 2-1-7. + Theme
+
+`theme`은 그래프의 각종 요소에 대한 서식, 위치, 사이즈, 컬러 등에 대한 통제를 할 수 있는 부가적인 문법 요소로
+다양한 옵션을 지정할 수 있다.
+
+```{r}
+ggplot(data=toyota, aes(x=Age, y=Price)) +
+  geom_point() +
+  facet_grid(FuelType ~ .) +
+  geom_smooth(method = "lm") +
+  coord_cartesian(xlim = c(0, 100)) +
+  theme_dark()
+```
+
+```{r}
+ggplot(data=toyota, aes(x=Age, y=Price)) +
+  geom_point() +
+  facet_grid(FuelType ~ .) +
+  geom_smooth(method = "lm") +
+  coord_cartesian(xlim = c(0, 100)) +
+  theme(panel.background = element_rect(fill="white"),
+        panel.border = element_rect(colour = "black", 
+                                    fill=NA, size=1))
+```
+
+---
+
+## 2-2. 히스토그램(Histogram) : 데이터 분포 표현하기
+
+히스토그램은 y가 기본값으로 `빈도`로 설정되어 있기 때문에
+반드시 x(연속형/수치형 변수)만 정의해주어야 한다. 
+```{r}
+ggplot(data = toyota, aes(x = Price)) +
+  geom_histogram()
+```
+
+`fill = "색상"`은 그래프 채우기, `colour = "색상`은 테두리 선색을 나타낸다.
+```{r}
+ggplot(data = toyota, aes(x = Price)) +
+  geom_histogram(fill = "white", # fill : 채우기색
+                 colour = "black") # colour : 테두리색 
+```
+
+```{r}
+ggplot(data = toyota, aes(x = Price)) +
+  geom_histogram(fill = "white", colour = "black") +
+  facet_wrap(FuelType~.)
+```
+
+```{r}
+ggplot(data = toyota, aes(x = Price)) +
+  geom_histogram(fill = "white", colour = "black") +
+  facet_wrap(FuelType~., scale = "free")
+```
+
+# `fill`을 geometric 부분에 정의해주면, 색상에 대한 옵션으로 인식하지만
+asethetic 부분에서 정의하면 `구분기준(그룹변수)`로 정의된다. 
+
+하지만, 이렇게 쓸 경우 geometric 부분에 
+반드시 `position = 'identity'` 옵션을 넣어줘야 된다. 
+
+만약, 넣지 않게되면 누적 그래프에서 누적의 양 중 FuelType으로 색깔 구분이 될 뿐이다.
+
+** 여기서 `identity`는 데이터 프레임의 값을 그대로 사용해서 그리라는 의미이다. **
+
+```{r}
+ggplot(data = toyota, aes(x = Price)) + 
+  geom_histogram(fill = "white")
+```
+
+```{r}
+ggplot(data = toyota, aes(x = Price, 
+                          fill = factor(Doors))) +
+  geom_histogram(position = "identity", # 그룹별로 구해라
+                 alpha = 0.5) # alpha는 투명도를 나타냄 
+```
+
+```{r}
+ggplot(data = toyota, aes(x = Price, fill = FuelType)) +
+  geom_histogram(alpha = 0.4)
+```
+
+또한, 자료의 분포를 밀도 곡선(Density curve)로 표현할 수 도 있다.
+참고로 색상의 밝기에 매칭되는 옵션이 `alpha` 이고, 테두리 굵기에 매칭되는 옵션이 `size` 이다. 
+```{r}
+# 선 서식 변경
+ggplot(data = toyota, aes(x = Price, 
+                          y = ..density..)) +
+  geom_histogram() +
+  geom_density(colour = "red", 
+               size = 0.5) # size:선굵기
+
+# 채우기 서식 변경
+ggplot(data = toyota, aes(x = Price, y = ..density..)) +
+  geom_histogram() +
+  geom_density(fill = "red", 
+               alpha = 0.3) # alpha : 투명도 
+
+# 선 + 채우기 둘다 
+ggplot(data = toyota, aes(x = Price, y = ..density..)) +
+  geom_histogram() +
+  geom_density(colour = "red", 
+               fill = "yellow", 
+               size = 0.8,
+               alpha = 0.3)
+```
+
+
+## 2-3. Bar graph(막대 그래프)
+
+막대 그래프는 기본적으로 `이산형(범주형)` X에 대한 Y값을 비교하기 위해 나타내는 그래프이다. 
+
+만약, 막대 그래프에서 Y를 지정해주지 않고 X만 정의하면, Y축은 기본값으로 `count`(빈도, frequency)를 표현하게 된다. 
+
+```{r}
+diamonds <- read.csv("./data/diamonds.csv")
+```
+
+### 막대 그래프 
+이산형 변수에 따른 요약 통계량 파악이 주 목적이다. 
+
+내장함수인 barplot 에서는 통계량 `table()`함수르 이용해서 직접 구해줬어야 하는데, ggplot의 `geom_bar()`함수는 따로 요약 통계량을 구해주지 않아도 범주별 통계량을 그려준다. 
+
+```{r}
+names(diamonds)
+ggplot(data=diamonds, aes(x=cut))+
+  geom_bar()
+
+ggplot(data=diamonds, aes(x=color))+
+  geom_bar()
+
+ggplot(data=diamonds, aes(x=clarity))+
+  geom_bar() +
+  facet_grid(cut~color, scale = "free")
+```
+
+참고 - 히스토그램과 막대그래프의 차이는 무엇일까? 
+
+히스토그램은 보통 `연속형 변수`의 `분포` 특성을 볼때 이용하고,
+막대그래프는 보통 `범주형 변수`의 `빈도` 특성을 볼때 이용한다.
+```{r}
+ggplot(data=diamonds, aes(x=price))+
+  geom_histogram()
+```
+
+미학 요소의 X 값을 범주변수로 두고, 
+Y 축을 "빈도"가 아닌 다른 연속형 변수로 표현할 수 있다. 
+
+이때, `geom_bar()`에는 stat = "identity" 또는 stat = "summary"라는 옵션을 추가해줘야 한다.  "identity"는 범주에 따른 price의 `합(Sum)`, "summary"는 범주에 따른 `평균(mean)` 표현해준다.
+
+아래 그래프는 컷에 따른 가격의 합을 나타낸다. 
+```{r}
+ggplot(data=diamonds, aes(x=cut, y=price))+
+  geom_bar(stat = "identity")
+```
+
+아래 그래프는 컷에 따른 가격의 평균을 나타낸다. 
+```{r}
+ggplot(data=diamonds, aes(x=cut, y=price))+
+  geom_bar(stat = "summary")
+```
+
+직접 요약통계량을 구해 맞는지 검증해보자.
+```{r}
+cut_summary <- 
+  diamonds %>% 
+  group_by(cut) %>% 
+  summarise(price = mean(price, na.rm = T))
+
+cut_summary
+```
+
+```{r}
+ggplot(data=cut_summary, aes(x=cut, y=price))+
+  geom_bar(stat = "identity")
+```
+
+값을 또 다른 범주 변수로 채울 수(fill) 있다.
+단, fill의 기준변수는 반드시 `factor형` 이어야 한다. 
+```{r}
+class(diamonds$color)
+diamonds$color <- diamonds$color %>% factor()
+class(diamonds$color)
+```
+
+```{r}
+ggplot(data=diamonds, 
+       aes(x=cut, 
+           y=price, 
+           fill = color))+
+  geom_bar(stat = "summary") # 평균
+```
+
+위 그래프의 문제는 무엇일까? 
+누적 그래프를 표현해 비교가 쉽지 않다.
+
+`position = "dodge"` 옵션을 추가로 넣으면 누적그래프에서 
+그룹별로 나뉜 독립적인 바그래프를 그릴 수 있다.
+```{r}
+ggplot(data=diamonds, aes(x=cut, 
+                          y=price, 
+                          fill = color))+
+  geom_bar(stat = "summary", 
+           position = "dodge")
+```
+
+
+## 2-4. Line graph(라인 그래프)
+
+```{r}
+coffee <- read_csv("./data/coffee_company.csv")
+```
+
+스타벅스만 따로 뽑아서 그려보자.
+```{r}
+starbucks <- 
+  filter(coffee, 
+         name == "주식회사스타벅스커피코리아")
+
+ggplot(data = starbucks, aes(x = year, y = nir)) +
+  geom_line()
+```
+
+라인에 point를 추가할 수도 있다. 
+
+라인의 기하학적 서식 변경은 geom_line 에서, 
+포인트의 서식 변경은 geom_point 부분에서 수정할 수 있다.
+
+```{r}
+ggplot(data = starbucks, aes(x = year, y = roa)) +
+  geom_line() +
+  geom_point()
+```
+
+coffee 데이터 전체에 대해 line 그래프를 그려보자.
+위 그래프와 차이는 무엇일까?
+
+라인 그래프는 일반적으로 추세를 나타내는데, 라인 그래프를 그리기 위해서는 하나의 X에 하나의 Y가 대응되는 자료여야 한다. 
+```{r}
+ggplot(data = coffee, aes(x = year, y = roa)) +
+  geom_line() +
+  geom_point()
+```
+
+`colour`로 구분할 수도 있고, `linetype`으로 구분할 수도 있다.
+참고로 x,y 값이 지정되어 있으므로  `stat = identity`는 없어도 동일한 값으로 인식된다. 
+```{r}
+unique(coffee$name)
+
+ggplot(data = coffee, aes(x = year, y = roa, linetype = name)) +
+  geom_line() +
+  geom_point()
+```
+
+```{r}
+ggplot(data = coffee, aes(x = year, y = roa, colour = name)) +
+  geom_line() +
+  geom_point()
+```
+
+```{r}
+ggplot(data = coffee, aes(x = year, y = roa, shape = name)) +
+  geom_line() +
+  geom_point()
+```
+
+```{r}
+ggplot(data = coffee, 
+       aes(x = year, 
+           y = roa, 
+           linetype = name, # 라인 타입으로 구분
+           colour = name, # 색으로 구분
+           shape = name)) + # 포인트 shape으로 구분
+  geom_line() + 
+  geom_point()
+```
+
++ 참고 : 여러 그래프를 한 Plot에 그리기 위한 Long shape 변환
+```
+위 coffee 데이터는 tidy한 데이터인가?
+
+tidy한 데이터가 하나의 행에 하나의 관측치가 있는 데이터라면, 위 데이터는 tidy함이 떨어지는(?) 데이터일지 모른다.
+하지만, ggplot에서 그룹별 plot을 그리기 위해서는 group 변수가 column이 아닌, 행으로 구분되는 Long shape 데이터여야한다.
+
+따라서, 우리가 굳이 Wide data가 무조건 좋다라고 정의내리지 않는 이유는 때에 따라 Long shape 데이터가 필요하기 때문이다.
+
+ggplot에서 여러 그래프를 한 Plot에 표현하고 싶다면, gather() 시켜서 Long shape 데이터를 만들도록 하자. 
+```
+
+```{r}
+coffee_long <- 
+  gather(coffee, gta, roa, opr, nir, 
+         key = "variable", 
+         value = "value")
+```
+
+각 변수에 대해 각 기업별로 그래프를 그려보자.
+```{r}
+# version 1
+ggplot(coffee_long, aes(x = year, 
+                        y = value, 
+                        linetype = name,
+                        color = name)) + 
+  geom_line() +
+  geom_point() + 
+  facet_wrap(~variable, scale = "free")
+```
+
+```{r}
+# version 2 
+ggplot(coffee_long, aes(x = year, 
+                        y = value, 
+                        linetype = variable,
+                        color = variable)) + 
+  geom_line() +
+  geom_point() + 
+  facet_wrap(~name, scale = "free", nrow = 3) + 
+  theme(legend.position = "bottom")
+```
+
+## 2-5. Scatter Plot(산점도)
+
+`수치형 변수`-`수치형 변수` 간 일대일 관계를 살펴볼 때는 산점도를 보는 것이 일반적이다. 
+```{r}
+ggplot(data=toyota, aes(x = KM, y = Price)) +
+  geom_point()
+
+ggplot(data=toyota, aes(x = KM, y = Price)) +
+  geom_point(shape = 22, fill = "red", colour = "blue")
+```
+
+참고로 ggplot의 point symbol은 총 25가지이다.
+```{r, out.width = "300px", include = FALSE}
+knitr::include_graphics("./figure/ggplot_symbol.png")
+```
+
+두 연속형 변수 간 관계에서 세번째 변수로 범주형(이산형) 변수를 구분 기준으로 추가할 수 있다.
+```{r}
+ggplot(data=toyota, aes(x = KM, 
+                        y = Price, 
+                        colour = FuelType, # 범주
+                        shape = FuelType)) + # 범주
+  geom_point(alpha = 0.5)
+```
+
+두 연속형 변수 간 관계에서 세번째 변수로 연속형 변수도 구분 기준으로 추가할 수 있다.
+
+산점도에서 세번째 연속형 변수를 추가하면 자동으로 범주가 구분된다. 색깔 구분은 `그라데이션`으로 표현된다. 
+```{r}
+ggplot(data=toyota, aes(x = KM, 
+                        y = Price, 
+                        colour = Age)) + # 연속형 변수 
+  geom_point()
+```
+
+만약 하나의 기준을 더 추가하고자 한다면, point의 크기로 구분할 수 있다.
+
+```{r}
+toyota$Doors <- toyota$Doors %>% factor()
+```
+
+`scale_size_area()`는 size를 실제 numeric 값에 비례하게 표현하는 옵션이다. 따라서, 미학 요소의 `size`는 Continuous한 값이 되어야 한다.
+
+```{r}
+ggplot(data=toyota, aes(x = KM, 
+                        y = Price, 
+                        colour = Doors, 
+                        size = Age)) +
+  geom_point(alpha = 0.3) + 
+  scale_size_area() 
+```
+
+산포도에는 회귀라인(Regression Line)을 추가할 수도 있다.
+산포도는 기본적으로 두 변수 간 선형 상관관계를 파악하기 위함인데, 회귀라인을 통해 관계의 정도를 더욱 명확히 표현할 수 있다.
+
+`stat_smooth()`의 기본값은 비선형 회귀 적합선을 추가하는 것이며, 선형 회귀라인을 추가하기 위해서는 
+`stat_smooth(method = lm)`을 추가한다.
+```{r}
+ggplot(data=toyota, aes(x = KM, y = Price)) +
+  geom_point() + 
+  stat_smooth()
+```
+
+만약, 회귀라인(Regression Line)의 신뢰구간 (Confidence Interval)을 제외하고 싶으면 추가로 `se=FLASE` 옵션을 추가하면 된다. 
+```{r}
+ggplot(data=toyota, aes(x = KM, y = Price)) +
+  geom_point() + 
+  stat_smooth(method = "lm", se = FALSE)
+```
+
+산점도에 회귀라인(Regression Line)을 추가하면 다양한 비교를 할 수 있다.
+
+가령, 두 변수의 관계에 세번째로 범주형 변인을 추가한 후 그룹에 따른 회귀라인을 그리면 집단 별 변수A-변수B의 관계를 직관적으로 비교가능하다.
+
+```{r}
+height_weight <- read_csv("./data/height_weight.csv")
+```
+
+```{r}
+ggplot(data=height_weight, 
+       aes(x = ageYear, y = heightIn)) +
+  geom_point()
+
+ggplot(data=height_weight, 
+       aes(x = ageYear, y = heightIn, colour = sex)) +
+  geom_point()
+
+ggplot(data=height_weight, 
+       aes(x = ageYear, y = heightIn, colour = sex)) +
+  geom_point() + 
+  stat_smooth(method = "lm")
+```
+
+## 2-6. Box Plot(박스플랏)
+
+박스플랏(Box plot)은 연속형/수치형 자료의 분포 특성(위치 경향, 산포 경향, 사분위)을 파악하기 위한 시각화 기법이다.
+
+일반적으로 Box Plot에서 실제 변수의 값 분포는 y축에 위치하므로 미학요소(aes) 부분에 y로 정의하는 것이 익숙하다.
+
+Boxplot에서 X는 막대그래프와 마찬가지로  항상 범주형(이산형) 변수가 되어야 한다.
+
+```{r}
+ggplot(diamonds, aes(y = price)) + 
+  geom_boxplot()
+```
+
+`price` 변수에 Outlier가 다수 있어 분포 특성을 파악하기가 어렵다.
+```{r}
+ggplot(diamonds, aes(y = price, # 연속형/수치형 변수
+                     x = cut)) + # 범주형 변수
+  geom_boxplot()
+```
+
+아웃라이어를 과감하기 제거하고 다시 보자.
+```{r}
+diamonds_reduced <- filter(diamonds, price < 10000)
+```
+
+```{r}
+ggplot(diamonds_reduced, aes(y = price, x = cut)) + 
+  geom_boxplot()
+
+ggplot(diamonds_reduced, aes(y = price, x = color)) + 
+  geom_boxplot()
+
+ggplot(diamonds_reduced, aes(y = price, x = clarity)) + 
+  geom_boxplot()
+```
+
+---
+
+## 2-7. 시각화 부가 요소 삽입
+
+앞서 시각화의 가장 기본적인 그래프들을 살펴보았다. 
+필수적인 시각화 요소만 포함되어도 대부분 직관적 판단이 가능할 정도의 인사이트있는 정보를 제공한다.
+
+하지만, 좀 더 Fancy하게 정보를 전달하고, 의사소통 하기 위해서 우리는 다양한 부가요소를 삽입할 수 있다.
+
+### 2-7-1. 주석 추가
+
+```{r}
+ggplot(iris, aes(x = Petal.Length, 
+                 y = Petal.Width, 
+                 colour = Species)) +
+  geom_point() +
+  annotate("text", 
+           x = 1.5, 
+           y = 0.25, 
+           label = "여기가 Setosa", 
+           alpha = 0.5) 
+```
+
+```{r}
+ggplot(iris, aes(x = Petal.Length, 
+                 y = Petal.Width, 
+                 colour = Species)) +
+  geom_point() +
+  annotate("text", x = 1.5, y = 0.25, 
+           label = "여기가 Setosa", alpha = 1) + 
+  annotate("text", x = 4.5, y = 1.25, 
+           label = "여기는 Versicolor", alpha = 0.5) + 
+  annotate("text", x = 6, y = 2, 
+           label = "여기는 Virginica", alpha = 0.3)
+```
+
+텍스트가 들어간 모든 옵션은 `fontface`, `colour`, `family` 옵션 등을 통해 다양한 서식 조정이 가능하다.
+```{r}
+ggplot(iris, aes(x = Petal.Length, y = Petal.Width, colour = Species)) +
+  geom_point() +
+  annotate("text", x = 1.5, y = 0.25, 
+           label = "Setosa", 
+           alpha = 1, 
+           fontface = "italic") + # 이탤릭체
+  annotate("text", x = 4.5, y = 1.25, 
+           label = "Versicolor", 
+           alpha = 1, 
+           colour = "blue") + # 색상 변경
+  annotate("text", x = 6, y = 2, 
+           label = "Virginica", 
+           alpha = 1, 
+           family = "serif")# 폰트 변경
+```
+
+### 2-7-2. 축 서식
+
+`coord_filp`을 이용하면 축 전환이 가능하다. 
+즉, x축과 y축을 반대로 뒤집을 수 있다.
+```{r}
+ggplot(diamonds_reduced, aes(y = price, x = cut)) + 
+  geom_boxplot() + 
+  coord_flip()
+```
+
+축의 범위를 지정할 수 도 있다. 
+```{r}
+ggplot(diamonds_reduced, aes(y = price, x = cut)) + 
+  geom_boxplot() + 
+  ylim(0, 7000)
+```
+
+```{r}
+ggplot(toyota, aes(y = Price, x = Age)) + 
+  geom_point()  + 
+  xlim(0, 300) +
+  ylim(0, 35000)
+```
+
+```{r}
+ggplot(toyota, aes(y = Price, x = Age)) + 
+  geom_point()  + 
+  xlim(0, 300) +
+  ylim(0, 35000) +
+  xlab("주행 기간(개월)") +
+  ylab("가격($)")
+```
+
+
+막대그래프나 box plot처럼 x축에 범주형 변수가 오는 경우, `scale_x_discrete` 요소를 추가해 그 범주의 순서를 바꿀수도 있다.
+```{r}
+ggplot(diamonds_reduced, aes(y = price, x = cut)) + 
+  geom_boxplot() + 
+  scale_x_discrete(limits = c("Very Good", 
+                              "Good", 
+                              "Ideal", 
+                              "Premium", 
+                              "Fair"))
+```
+
+순서를 단순히 거꾸로 뒤집는 경우는 factor level을 역으로 뒤집으면 된다. 
+```{r}
+diamonds$cut <- diamonds$cut %>% factor()
+ggplot(diamonds_reduced, 
+       aes(y = price, x = cut)) + 
+  geom_boxplot() + 
+  scale_x_discrete(limits = rev(levels(diamonds$cut)))  
+```
+
+`scale_x_continuous`를 이용하면, 연속형 변수의 축 눈금(Tick)을 원하는 interval로 나타낼 수 있다.
+```{r}
+ggplot(data = coffee, aes(x = year, 
+                          y = roa, 
+                          colour = name)) +
+  geom_line() + 
+  geom_point()
+```
+
+```{r}
+ggplot(data = coffee, 
+       aes(x = year, 
+           y = roa, colour = name)) +
+  geom_line() +
+  geom_point() +
+  scale_x_continuous(breaks = seq(2008, 2020, 2)) +
+  scale_y_continuous(breaks = seq(-10, 50, 5)) +
+  theme(legend.position = "bottom")
+```
+
+이처럼 축 레이블(Tick label)을 변경할 수도 있다.
+```{r}
+ggplot(data = coffee, aes(x = year, 
+                          y = roa, 
+                          colour = name)) +
+  geom_line() +
+  geom_point() + 
+  scale_x_continuous(breaks = c(seq(2008, 2020, 2)), 
+                     labels = c(paste0(seq(2008, 
+                                           2020, 2),
+                                       "년"))) +
+  scale_y_continuous(breaks = c(seq(-10, 50, 5)))
+```
+
++ `ggplot`에서 시각화 부가 요소를 추가할 때, 부가적으로 추가된 요소들에 대한 세부적인 서식 변경은 
+해당 옵션 내에서 이뤄지는 것이 아니라, `theme()`이라는 별도 옵션이 추가적으로 삽입된다. 
+
+즉, 추가하고, 정의하는 건 별도의 line을 추가하지만, 추가된 요소의 서식은 `theme()`안에서 수정해야 한다. 
+
+예를 들어 아래와 같이 x축, y축 제목과 눈금을 수정했는데, 1) 눈금 글씨 크기와 2) 축 제목 폰트를 바꾸고 싶다면 어떻게 해야 될까?
+
+```{r}
+ggplot(data = coffee, aes(x = year, y = roa, colour = name)) +
+  geom_line() +
+  geom_point() + 
+  scale_x_continuous(breaks = c(seq(2008, 2018, 2)), 
+                     labels = c(paste0(seq(2008, 2018, 2), "년"))) +
+  scale_y_continuous(breaks = c(seq(-10, 50, 5))) +
+  ylab("Return on Assets (ROA)") +
+  xlab("Year")
+```
+
+```{r}
+ggplot(data = coffee, aes(x = year, y = roa, colour = name)) +
+  geom_line() +
+  geom_point() +
+  scale_x_continuous(breaks = c(seq(2008, 2018, 2)), 
+                     labels = c(paste0(seq(2008, 2018, 2), "년"))) +
+  scale_y_continuous(breaks = c(seq(-10, 50, 5))) +
+  ylab("Return on Assets (ROA)") +
+  xlab("Year") +
+  theme(axis.text.x = element_text(family = "serif",
+                                   face = "italic", 
+                                   colour = "darkred", 
+                                   size = 12),
+        axis.text.y = element_text(family = "serif", 
+                                   face = "bold", 
+                                   colour = "blue", 
+                                   size = 12),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 12, 
+                                    colour = "red"))
+```
+
+`theme()`으로 수정할 수 있는 추가 요소는 대표적으로 다음과 같다.
+```   
+전체 차트 제목 (plot.title)
+차트영역 배경 채우기 (panel.background)
+차트영역 배경 테두리 (panel.border)
+차트영역 주 눈금 (panel.grid.major)
+차트영역 보조눈금 (panel.grid.minor)
+x축 영역 눈금 텍스트 (axis.text.x)
+y축 영역 눈금 텍스트 (axis.text.y)
+x축 영역 제목 텍스트 (axis.title.x)
+y축 영역 제목 텍스트 (axis.title.y)
+범례 위치서식 (legend.position)
+범례 제목서식 (legend.title)
+범례 텍스트서식 (legend.text)
+범례 채우기 (legend.background)
+범례 심볼 너비 (legend.key.width)
+...
+```
+
+### 2-7-3. 범례 서식
+```{r}
+pp <- 
+  ggplot(data = coffee, aes(x = year, 
+                                y = roa, 
+                                colour = name)) +
+  geom_line() +
+  scale_x_continuous(breaks = c(seq(2008, 2018, 2)), 
+                     labels = c(paste0(seq(2008, 2018, 2), "년"))) +
+  scale_y_continuous(breaks = c(seq(-10, 50, 5)))
+```
+
+```{r}
+pp
+```
+
+```{r}
+pp + 
+  guides(colour = guide_legend(ncol = 3)) + 
+  theme(legend.position = "bottom",
+        legend.key.width = unit(1, "cm"),
+        legend.title=element_blank(),
+        legend.background=element_rect(fill="white", 
+                                       colour = "grey"))
+```
+
+범례의 `position`을 직접 좌표계로 지정해주면 차트영역 내부로 넣을수도 있다.
+범례의 가운데를 기준으로 좌표계가 설정되며, 왼측 하단 구석이 (0,0)이 된고, 우측 상단 구석이 1.1이 된다. 
+만약 범례가 화면 정 가운데 위치하게 하려면 (0.5, 0.5)로 설정하면 된다. 
+
+```{r}
+pp + 
+  guides(colour = guide_legend(ncol = 1)) + 
+  theme(legend.position = c(0.18, 0.8),
+        legend.key.width = unit(0.5, "cm"),
+        legend.title=element_blank(),
+        legend.background=element_rect(fill="white", 
+                                       colour = "grey"))
+```
+
+---
+
+### 2-7-4. 패싯 서식
+
+시각화 도구가 강점을 지닐 수 있는 부분은 시각화를 여러 그룹별로 다양하게 볼 수 있다는 점이다. 
+이런점에서 R과 같은 프로그래밍 언어를 통한 시각화가 엑셀이나 Powepoint 등 보다 강력한 힘을 발휘할 수 있다.
+
+`ggplot`은 이산형 변수에 대해 그룹별 분석결과를 제공하는 `패싯(facet)` 옵션을 제공한다. 
+
+```{r}
+ggplot(data = diamonds, aes(x = x, y = price, colour = color)) +
+  geom_point()
+```
+
+```{r}
+ggplot(data = diamonds, aes(x = x, y = price, colour = color)) +
+  geom_point(alpha = 0.5)+
+  facet_grid(~cut)
+```
+
+```{r}
+ggplot(data = diamonds, aes(x = carat, y = price, colour = color)) +
+  geom_point(alpha = 0.5)+
+  facet_wrap(~cut)
+```
+
+```{r}
+ggplot(data = diamonds, aes(x = carat, y = price, colour = color)) +
+  geom_point(alpha = 0.5)+
+  facet_wrap(cut~.)
+
+ggplot(data = diamonds, aes(x = carat, y = price, colour = color)) +
+  geom_point(alpha = 0.5)+
+  facet_grid(cut~.)
+```
+
+```{r}
+ggplot(data = diamonds, aes(x = carat, y = price, colour = color)) +
+  geom_point(alpha = 0.5)+
+  facet_grid(clarity~cut)
+```
+
+
+### 2-7-5. 나만의 테마 만들기
+
+`Theme`에 들어갈 요소가 매우 많거나, 자주 쓰이는 테마의 경우 아래와 같이 별도로 `theme` 적용 내용을 `my_theme`으로 저장해놓고 사용할 수 있다. 
+
+```{r}
+my_theme <- 
+  theme(panel.background = element_rect(fill="white"),
+        panel.border = element_rect(colour = "black", 
+                                    fill=NA, size=1),
+        panel.grid.major = element_line(colour = "white"),
+        panel.grid.minor = element_line(colour = "white"),
+        axis.text.x = element_text(size = 12, 
+                                   colour = "black", 
+                                   family = "serif"),
+        axis.text.y = element_text(size = 12, 
+                                   colour = "black", 
+                                   family = "serif"),
+        axis.title.x=element_text(size = 12, 
+                                  colour = "black", 
+                                  family = "serif"), 
+        axis.title.y= element_text(size = 12, 
+                                   colour = "black", 
+                                   family = "serif"),
+        plot.title=element_text(vjust=1, 
+                                hjust=1, 
+                                family = "serif"))
+```
+
+
+```{r}
+ggplot(data=toyota, aes(x=Age, y=Price)) +
+  geom_point() +
+  facet_grid(FuelType ~ .) +
+  geom_smooth(method = "lm") +
+  my_theme
+```
+
+```{r}
+ggplot(data=toyota, aes(x=KM, y=Price)) +
+  geom_point() +
+  facet_wrap(FuelType ~ .) +
+  geom_smooth(method = "lm") +
+  my_theme
+```
+
+```{r}
+coffee_long <- 
+  gather(coffee, gta, roa, opr, nir, 
+         key = variable, value = value)
+```
+
+```{r}
+ggplot(data = coffee_long, 
+       aes(x = year, y = value, 
+           linetype = variable, 
+           colour = variable)) +
+  facet_wrap(name~., scales = "free") + 
+  geom_line(size = 1) +
+  geom_point() +
+  scale_color_brewer(palette = "Set2") + 
+  scale_x_continuous(breaks = c(seq(2008, 2020, 2)), 
+                     labels = c(paste0(seq(2008, 2020, 2), "년"))) +
+  guides(colour = guide_legend(ncol = 4)) + 
+  theme(legend.position = "bottom",
+        legend.key.width = unit(2.0, "cm"),
+        legend.title=element_blank(),
+        legend.text = element_text(),
+        legend.background=element_rect(fill="white", 
+                                       colour = "grey")) +
+  my_theme
+```
+
+
+### 2-7-6. 시각화 Output 내보내기
+
+output을 내보낼 땐, 다음의 절차가 하나의 세트처럼 작동해야 된다.
+객체로 저장하고 다른 작업을 하더라도 `png() -> print() -> dev.off()` 는 한번에 작동해야 된다. 
+
+png와 print만 하더라도 파일로 저장은 되지만 `dev.off()`를 하지 않으면 현재 작동한 graphic이 남아있는 채로 다른 작업을 하므로 
+다음 그래프를 저장할 때 충돌이 발생하고, 메모리를 잡아먹게 된다. 
+
+```
+타겟 plot을 객체로 저장 -> png() -> print() -> dev.off() 
+```
+
+```{r}
+my_plot <- 
+  ggplot(data = coffee_long, 
+            aes(x = year, 
+                y = value, 
+                linetype = variable, 
+                colour = variable)) +
+  facet_wrap(name~., scales = "free") + 
+  geom_line(size = 1) +
+  geom_point() +
+  scale_color_brewer(palette = "Set2") + 
+  scale_x_continuous(breaks = c(seq(2008, 2020, 2)), 
+                     labels = c(paste0(seq(2008, 2020, 2), "년"))) +
+  guides(colour = guide_legend(ncol = 4)) + 
+  theme(legend.position = "bottom",
+        legend.key.width = unit(2.0, "cm"),
+        legend.title=element_blank(),
+        legend.text = element_text(),
+        legend.background=element_rect(fill="white", colour = "grey")) + my_theme
+
+png(filename = "./result/output_plot.png", 
+    width = 1200, 
+    height = 1500, 
+    res = 200)
+print(my_plot)
+dev.off()
+```

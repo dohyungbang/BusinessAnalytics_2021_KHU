@@ -1,0 +1,718 @@
+---
+title: "LN02_Data Manipulation I"
+author: "Dohyung Bang"
+date: 2021. 9. 13(Mon)
+output: html_document
+---
+
+# 작업환경(working directory) 설정하기
+```{r "setup", include = FALSE}
+knitr::opts_knit$set(root.dir = "C:/BA2021")
+```
+
+# 1. 기초문법
+## 1-1. 사칙연산
+```{r}
+1+1
+1-1
+3*3
+5/1
+```
+
+```{r}
+20 %% 3 # 나머지 구하기
+```
+
+## 1-2. 내장함수(Base function) 살펴보기
+### 1-2-1. 출력함수 : print(), cat()
+```{r}
+print(3)
+print("hello")
+```
+
+```{r}
+cat("hello")
+```
+
+### 1-2-2. 데이터 타입/변수 타입 확인 함수 : class()
+#### 데이터 타입 : vector, matrix, dataframe, list, array
+#### 변수 타입 : numeric, integer, character, factor, logical
+
+#### 변수 선언 및 변수 타입 확인하기
+```{r}
+x <- 3
+y <- "apple"
+z <- 3.888
+```
+
+```{r}
+class(x)
+```
+
+```{r}
+class(z)
+```
+
+```{r}
+class(y)
+```
+
+```{r}
+x_1 <- as.factor(x)
+class(x_1)
+```
+
+## 1-3. 데이터 타입
+### 1-3-1. 벡터(vector)
+
+R에서 벡터를 만들때는 `c()`함수를 쓴다. 
+
+하나의 값 : Scalar (0차원)
+두개 이상의 값으로 이루어진 행/열 : 벡터(1차원)
+복수의 벡터가 모여서 행렬을 이루면 : 행렬(2차원)
+
+```{r}
+c(1,3,5,7,9)
+x_vector <- c(1,3,5)
+y_vector <- c("apple", "orange", "banana")
+z_vector <- c(1,3,5, "apple")
+```
+
+---
+
+### 1-3-2. vector를 Matrix로 만들기: bind() 
+
+```{r}
+x_vector <- c(1,3,5,7,9)
+y_vector <- c(2,4,6,8,10)
+```
+
+```{r}
+matrix_1 <- cbind(x_vector, y_vector) # column-wise bind
+```
+
+```{r}
+matrix_2 <- rbind(x_vector, y_vector) # row-wise bind
+```
+
+```{r}
+class(matrix_1)
+class(matrix_2)
+```
+
+### 1-3-3. 데이터 프레임(Data Frame)
+```{r}
+chicago <- read.csv("./data/chicago.csv") # dataframe으로 자동으로 정의된다. 
+chicago_mat <- as.matrix(chicago) # 데이터 프레임을 매트릭스로 타입 변경하기
+```
+
+---
+
+### 1-4. 인덱싱 & 슬라이싱
+
+#### 1-4-1. 인덱싱
+##### 1987년 1월 3일의 오존지수는 ? 3행 8열 = (3, 8)
+```{r}
+chicago[3,8] # 콕 집어서 오존지수만 가져오기
+```
+
+```{r}
+chicago[3,] # 1월 3일 행 전체 가져오기
+chicago[,5]
+```
+
+##### 복수 행을 인덱싱 할때는 ? 
+```{r}
+c(3,4,5)
+a <- chicago[c(3,4,5),]
+
+a <- chicago[c(3,4,5),c(1,3,5)] 
+```
+
+행은 행번호로 인덱싱해야되지만, 열은 변수명으로도 추출이 가능하다. 
+```{r}
+a <- chicago[c(3,4,5),c("tmpd", "dptp", "date")]
+View(a)
+```
+
+#### 1-4-2. 슬라이싱
+```{r}
+a <- chicago[3:5, 3:5]
+a <- chicago[c(3,5,8), c(2,4,9)]
+```
+
+### 1-5. 데이터 프레임이 갖고 있는 변수 확인하기
+```{r}
+names(chicago)
+
+var_name_vector <- names(chicago)
+
+a <- chicago$date
+```
+
+#### 변수확인하기
+
+데이터프레임$변수
+
+```{r}
+temp_vector <- chicago$tmpd
+```
+
+#### 새 변수 추가하기
+```{r}
+chicago$new_var <- (chicago$tmpd + chicago$dptp)/2
+```
+
+### 1-6. 수열(Sequence) 만들기
+
+#### 1-6-1. 콜론(:) 이용하기
+```{r}
+1:10
+```
+
+#### 1-6-2. seq() 함수 이용하기 : sequence
+
+##### seq(시작 숫자, 끝 숫자, by = 간격(등차))
+```{r}
+seq(2, 50, by = 3)
+```
+
+#### 3) rep() 함수 이용하기 : replicate or repeat
+```{r}
+rep(2010:2020, 2)
+rep(2010:2020, each = 2)
+```
+
+---
+
+### 1-7. 패키지 설치 및 불러오기
+
+install은 최초에 1회만 진행함.
+```
+install.packages("dplyr") # 설치할 땐 "따옴표" 처리
+```
+
+설치된 패키지를 쓸때는 항상 library() 함수를 이용해서 불러온다. 
+```{r}
+library(dplyr) # 불러올 땐 그냥 불러오기 가능
+```
+
+---
+
+### 1-8. 조건문(if 문) : 특정 조건을 만족하는 작업 수행
+- 이상, 이하, 등호
+- A가 x이면, C 작업을 수행하라 
+- A가 특정 값(x) 보다 크면(크거나 같으면), 작으면(작거나 같으면)
+
+- A > x 면, Do C
+- B < x 면, Do C
+- A >= x면, Do C 
+- B <= x면, Do C
+- A == x면, Do C "A가 x이면, C를 수행하라"
+- A != x면, Do C "A가 x가 아니면, C를 수행하라"
+
+```{r}
+x <- 90 # 커트라인
+A <- 94 
+B <- 88 
+```
+
+```
+if(입력할 조건){
+  조건을 충족 시 수행할 작업
+}
+```
+
+Q1. x = 커트라인이고, 커트라인보다 높으면 "합격"을 Print 하라.
+-> 조건을 충족하지 않았을때는 **아무 작업도 수행하지 않는다.**
+
+##### if 구문
+```{r}
+if(A >= x){
+  print("합격입니다.")
+}
+```
+
+```{r}
+if(B > x){
+  print("합격입니다.")
+}
+```
+
+Q2. x = 커트라인이고, 커트라인보다 높으면 "합격", 낮으면 "불합격"을 Print 하라.
+조건을 충족하면 "합격", 충족하지 못하면 "불합격"
+
+##### if-else 구문
+```{r}
+if(A > x){
+  print("합격")
+} else{
+  print("불합격")
+}
+```
+
+100~ 90 : A
+90~80 : B
+80 ~70 : C
+...
+
+
+```{r}
+if(B > x){
+  print("합격")
+} else{
+  print("불합격")
+}
+```
+
+참고 - if-else만 쓸거면 `ifelse()` 함수를 쓰는게 더 낫다
+```
+ifelse(조건, 참일 때 값, 거짓일 때 값)
+```
+
+```{r}
+ifelse(A > x, "합격", "불합격")
+```
+
+```{r}
+ifelse(B > x, "합격", "불합격")
+```
+
+
+만약에 조건이 Binary 하지 않다면(앞/뒤, 합격/불합격), 조건을 충족했을 때와 하지 않았을 때 수행해야되는 작업이 다르다면, 이때는 `ifelse()`함수로는 처리할 수 없다. 
+
+A, B
+A가 화이트 와인이면, 작업 수행 ()
+    레드 와인이면, 작업 수행 
+    스파클링 와인이면, ~~ 
+
+##### if-else if 문
+```{r}
+if (A > 90 & A < 100){
+  
+  print("평점이 A입니다.")
+  
+} else if(A >80 & A < 90){
+  
+  print("평점이 B입니다.")
+  
+} else if(A >70 & A < 80){
+  
+  print("평점이 C입니다.")
+  
+} else if(A >60 & A < 70){
+  
+  print("평점이 D입니다.")
+  
+} else {
+  
+  print("평점이 F입니다.")
+}
+```
+
+```{r}
+x <- 1:10
+
+x %% 2 == 0 # 짝수, 아니면 홀수 
+
+
+if(x %% 2 == 0){
+  print("짝수")
+} else{
+  print("홀수")
+}
+
+```
+
+---
+
+### 1-9. 반복문(for loop문) : 동일한 작업을 반복 수행하는 작업
+```
+for(반복범위){
+  반복하면서 수행할 작업  
+}
+```
+
+```{r}
+for(i in 1:10){
+  
+  print(i+3)
+  
+}
+```
+
+
+```{r}
+for (i in 1:10){
+  
+  if(i %% 2 == 0){
+    print(paste0("목표숫자 : ", i, "는 짝수 입니다."))
+  } else{
+    print(paste0("목표숫자 : ", i, "는 홀수 입니다."))
+  }
+
+}
+```
+
+```{r}
+paste0("목표숫자 : ", i, "는 짝수 입니다.")
+```
+
+```{r}
+
+2*1 = 2
+2*2 = 4
+2*3 = 6
+
+...
+
+9*1 = 9
+9*2 = 18
+
+for (j in 2:9){
+  print(paste0(j, "단 입니다"))
+  for (i in 1:9){
+    print(paste0(j, "*", i, " = ", j*i))
+    
+    if(i == 9){
+      print("------------------------")
+    }
+  }
+}
+```
+
+---
+
+# 2. 사용자 정의함수 만들기
+
+상용 통계분석 Tool과 달리 프로그래밍 언어를 사용하면 직접 입맛에 맞게 사용자 정의 함수를 만들어 활용할 수 있다는 장점이 있다.
+
+함수가 `function(인자1, 인자2, ...)`의 구조로 되어 있었다는 점만 기억하면 사용자 정의함수를 만들기 쉽다.
+
+BMI 지수를 계산해주는 함수를 한번 만들어 보자. 
+
+```
+함수이름 <- function(인자값1, 인자값2, ...){
+
+  output_1 <- func_A(인자값1)
+  output_2 <- func_A(인자값2)
+  
+  final_output <- func_B(output_1, output_2)
+  
+  return(final_output)
+}
+
+```
+
+```{r}
+my_sum <- function(x, y){
+  
+  sum <- x*x + y*y
+  
+  return(sum)
+}
+
+```
+
+```{r}
+sum(3,-3)
+my_sum(3,-3)
+```
+
+```{r}
+CalculateBMI <- function(height, weight){
+
+    bmi <- weight / (height*0.01)^2
+  
+    return(bmi)
+}
+```
+
+```{r}
+my_bmi <- CalculateBMI(180, 87)
+my_bmi
+```
+
+```{r}
+round(3.14895, digit = 4)
+```
+
+
+```{r}
+CalculateBMI <- function(height, weight){
+
+    bmi <- round(weight / (height*0.01)^2, digit = 3)
+    print(paste0("BMI : ", bmi))
+    
+    if (bmi < 18.5){
+      print("저체중입니다.")
+    } else if (bmi > 18.5 & bmi < 24.9){
+      print("정상 체중입니다.")
+    } else if (bmi > 25.0 & bmi < 29.9){
+      print("과체중 입니다.") 
+    } else {
+      print("비만입니다.")
+    }
+}
+
+```
+
+```{r}
+CalculateBMI(180, 90)
+```
+
+---
+
+# 3. 데이터 읽고(가져오기), 쓰기(저장하기)
+
+## 3-1. `내장함수` : read.csv(); write.csv()  
+
+비교를 위해 내장함수를 먼저 이용해보자. 
+```{r}
+iris <- read.csv("./data/iris.csv")
+```
+
+저장하는 내장함수
+```{r}
+write.csv(iris, "./data/iris_revised.csv")
+```
+
+## 3-2. `readr` 패키지 
+
+좀 더 `tidy`한 작업을 위해서는 `readr`을 이용해 데이터 프레임을 불러 올 수 있다.
+
+```
+install.packages("readr")
+```
+
+```{r}
+library(readr)
+```
+
+```
+read_csv() : 쉼표(,)로 구분된 csv 파일 read
+read_csv2() : 세미콜론(;)으로 구분된 csv 파일 read
+read_tsv() : 탭(tab)으로 구분된 파일 read
+read_fwf() : 고정된 너비로 구분된 파일 read
+```
+
+아이리스(iris) 데이터를 불러와 보자.
+```{r}
+iris_2 <- read_csv("./data/iris.csv")
+```
+
+
+왜 기본 내장함수인 `read.csv()` 보다 `readr`이 우수할까?
+
+```
+- 내장함수보다 수십배 빠르다. 
+- 데이터를 자동으로 tibble로 생성한다. 티블이라서 좋은 점은 변수 타입을 임의로 바꾸지 않는다. 
+- 재현가능성이 높다. 코드를 통해 상호작용 하는 과정에서 다른 PC에서 작동하지 않는 경우가 적다.
+```
+
+참고로 문자열이 포함된 데이터를 불러올때는 인코딩 문제로 인해 문자열이 깨지는 문제가 자주 발생한다.
+```{r}
+review_data <- read_csv("./data/review_sample.csv")
+```
+
+만약, 생성된 데이터가 `UTF-8`로 코딩되어 있다면, 아래와 같이 변경해줄 수 있다.
+`stringr`은 문자열을 다루기 때문에 어떤 언어를 사용하고 있는지 지정해주는 것이 좋다. 
+기본값(default)으로 영어로 되어있으나 분석 목적에 따라 `로캘(locale)`을 지정해줘야 할 때가 있다. 
+
+```{r}
+review_data <- read_csv("./data/review_sample.csv", locale = locale("ko", encoding='UTF-8'))
+```
+
+한글 문자열이 포함된 데이터라면, 아래와 같이 변경해줄 수 있다. 
+```{r}
+review_data <- read_csv("./data/review_sample.csv", locale = locale('ko', encoding='EUC-KR'))
+```
+
+이것도 안되면, 텍스트 에디터를 이용해 인코딩을 확인하고 해당 인코딩 옵션을 넣어주자. 
+
+※ Notepad ++ 이용
+
+---
+
+# 4. 날짜변수 다루는 패키지 : `lubridate`
+
+tidyverse 류 패키지 
+- dplyr, tidyr, ggplot, lubridate, readr, ...
+
+
+
+```
+install.packages("lubridate")
+```
+
+```{r}
+library(lubridate)
+```
+
+우리가 접하는 데이터가 꼭 숫자이거나, 문자인 것만은 아니다. 
+종종 우리는 날짜/시간 데이터를 접하는데, 외관은 숫자/문자의 조합이나 
+우리가 알고 있는 숫자/문자 개념과는 다른 정보는 내포하고 있다.
+
+이러한 경우, 우리는 이 값에 상응하는 정보로 인식시켜줘야 R이 혼동하지 않는다. 
+날짜 및 시간 데이터에는 다음의 유형이 있다.
+
+```
+데이트형(date): 년/월/일 등 날짜정보만 표기
+데이트-타임형(date-time): 날짜 + 시간 모두 표기
+```
+
+## 4-1. 문자열로부터 날짜/시간 생성
+
+```{r}
+chicago <- read_csv("./data/chicago.csv") # ymd 함수를 자동적용 
+class(chicago$date)
+```
+
+
+```{r}
+date <- "2019-07-07"
+class(date)
+
+date <- ymd(date)
+class(date)
+
+date <- "20190707"
+ymd(date)
+
+date <- "2019.07.07"
+ymd(date)
+
+date <- "2019/07/07"
+ymd(date)
+
+```
+
+```{r}
+date <- "July 7th, 2020"
+mdy(date)
+```
+
+```{r}
+date <- "7-Jul-2020"
+dmy(date)
+
+date <- "08-07-2020"
+dmy(date)
+```
+
+```{r}
+date_time <- "2020-07-07 13:26:35"
+ymd_hms(date_time)
+
+date_time <- "07/07/2020 13:26:35"
+mdy_hms(date_time)
+```
+
+
+## 4-2. 현재 시간으로부터 날짜/시간 생성
+```{r}
+# 현재 날짜로부터 날짜 정의
+today()
+```
+
+```{r}
+# 현재 날짜-시간으로부터 날짜 정의
+now()
+```
+
+## 4-3. 시간 범위 나타내기
+
+시간 범위를 나타내는 유형에는 `듀레이션형`과 `피리어드형`이 있다. 
+
+### 4-3-1. 듀레이션형 
+듀레이션형은 두 사건 사이의 정확한 시간 범위를 초단위로 나타내어 실질적인 시간 흐름을 측정한다. 
+
+`duration`형으로 변환하면 다양한 연산자를 통해 쉽게 다양한 형태의 날짜연산을 할 수 있다.
+먼저 모든 시간단위를 초로 나타낸다. 
+```{r}
+# 초
+dseconds(10)
+
+#분
+dminutes(10)
+
+#시간
+dhours(10)
+
+#날짜
+ddays(10)
+
+#주
+dweeks(10)
+
+#년
+dyears(10)
+```
+```{r}
+today() + ddays(10)
+```
+
+```{r}
+ymd("1990-07-18") + ddays(10000)
+```
+
+```{r}
+ymd_hms("2020-03-12 13:00:00")
+```
+
+### 4-3-2.피리어드형(Period) 
+초단위 연산을 하다보면 윤년/일광절약제 등으로 인해 시간 계산이 일반적이지 않을때 문제가 생긴다. 피리어드형은 일/월 단위로 나타내어 보다 직관적이다.
+
+```{r}
+today() + days(1)
+```
+
+```{r}
+seconds(10)
+
+minutes(10)
+
+hours(12)
+
+days(6)
+
+months(10)
+
+weeks(10)
+
+years(10)
+```
+
+2020년은 윤년이다. 이런 경우 듀레이션형은 365일을 초단위로 환산하여 더하게 되는데, 우리가 의도한 대로 날짜계산이 이뤄지지 않는다.
+```{r}
+# 듀레이션형으로 계산
+ymd("2020-01-01") + dyears(1) # 365*24*60*60초
+ymd("2020-01-01") + dmonths(1) # 30*24*60*60
+```
+
+반면, 피리어드 형은 우리가 의도한 대로 날짜를 계산해준다.
+```{r}
+# 피리어드형으로 계산
+ymd("2020-01-01") + years(1)
+ymd("2020-01-01") + months(1)
+ymd("2020-01-01") + days(1)
+```
+
+## 4-4. 거꾸로, 날짜를 구성요소별로 추출하려면?
+
+데이트-타임형으로부터 바로 추출할 수도 있고,
+```{r}
+date <- now()
+date
+year(date)
+month(date)
+day(date)
+```
+
+문자열로 된 자료에서도 포맷만 맞으면 자동 인식되어 추출이 가능하다.
+```{r}
+date <- "2020-07-20"
+year(date)
+month(date)
+day(date)
+```
