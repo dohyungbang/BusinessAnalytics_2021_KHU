@@ -1,0 +1,461 @@
+---
+title: "LN13 - 선형계획법(Linear Programming) II"
+Author : Dohyung Bang 
+output: html_document
+---
+
+```{r "setup", include = FALSE}
+knitr::opts_knit$set(root.dir = "C:/BA2021")
+```
+
+## `nonparaeff` 패키지 설치 
+
+```{r}
+install.packages("nonparaeff")
+```
+
+```{r}
+library(nonparaeff)
+```
+
+```{r}
+library(readr)
+library(dplyr)
+library(ggplot2)
+library(tidyr)
+```
+
+
+# 실습#1 : 외식기업 운영 효율성(Operational Efficiency) 분석
+
+## 1) 데이터 불러오기
+```{r}
+fb_data <- read_csv("./data/2020_fb_dea.csv")
+```
+
+```{r}
+fb_data <- filter(fb_data, cogs != 0)
+```
+
+## 2) 효율성 결정문제 정의
+
+외식기업의 매출원가, 유형자산, 판관비(인건비 제외), 인건비 투입에 따른 
+매출액 산출의 효율성 평가
+
+## 3) DEA 용 데이터 추출
+
+데이터 셋은 항상 산출요소가 먼저 오고, 투입요소가 와야 된다.
+만약 산출변수가 2개, 투입변수가 3개라면 
+`select(산출#1, 산출#2, 투입#1, 투입#2, 투입#3)` 과 같이 불러와야 한다.   
+```{r}
+dea_set <- fb_data %>% select(sales, cogs, ta, exp_revised, laborexp)
+```
+
+## 4) CCR 모형 
+CCR 모형의 효율성을 일반적으로 기술효율성(Technical efficiency: TE)라 부른다. 
+
+dea 함수의 쓰임에 대해 알아보자. 
+
+noutput : 산출요소의 수
+orientation : 1=투입지향(주어진 투입에서 산출을 극대화 하는 문제), 
+              2=산출지향(주어진 산출을 극대화하기에 투입을 최소화 하는 문제)
+rts : return to scale = 1(불변규모수익), 2(가변규모수익)
+
+```{r}
+te <- dea(dea_set, noutput = 1, orientation = 1, rts = 1)
+```
+
+## 5) BCC 모형 
+
+BCC 모형을 CCR과 구분하기 위해 순수기술효율성(Pure Technical Efficiency : PTE)이라 부른다.
+```{r}
+pte <- dea(dea_set, noutput = 1, orientation = 1, rts = 2) 
+```
+
+```{r}
+total <- cbind(te$eff, pte$eff)
+```
+
+## 6) 규모 효율성
+
+규모 효율적인지, 규모 비효율적인지의 판단은 BCC 효율성과 CCR 효율성 과의 관계를 통해 알 수 있다.
+```{r}
+rts_check <- pte$eff / te$eff %>% as.data.frame()
+```
+
+하지만, 이것만 가지고는 규모 비효율적 DMU가 IRS인지 DRS인지 알 수 없다. 
+CCR 모형에서 Lambda를 통해 IRS 및 DRS를 판단할 수 있다. 
+
+```{r}
+lambda_list <- te[,2:(nrow(te)+1)]
+te$scale_eff <- apply(lambda_list, 1, sum)
+```
+
+```{r}
+te$scale_eff_cate <- ifelse(te$scale_eff > 1.000001, "DRS",
+                            ifelse(1 - te$scale_eff < 0.000001, "CRS", "IRS"))
+```
+
+```{r}
+table(te$scale_eff_cate)
+```
+
+## 7) 벤치마크 찾기
+
+```{r}
+DMU <- paste0("D", 1:nrow(fb_data))
+fb_bench <- cbind(DMU, lambda_list)
+```
+
+```{r}
+for (i in 1:nrow(fb_bench)){
+  each_lambda <- fb_bench[, i+1]
+  each_lambda[each_lambda <= 0] <- NA
+  each_lambda[each_lambda > 0] <- fb_bench[i,1]
+  fb_bench[, i+1] <- each_lambda
+}
+```
+
+```{r}
+benchmark <- fb_bench[,2]
+
+for (i in 2:length(fb_bench[,1])){
+  benchmark <- paste0(benchmark, ", ", fb_bench[,i+1]) # CONCATENATE()
+  benchmark <- gsub('NA, ', '', benchmark)
+}
+
+benchmark <- gsub(', NA', '', benchmark)
+```
+
+## 8) 결과 정리
+```{r}
+fb_data$DMU <- DMU
+fb_data$te <- te$eff
+fb_data$pte <- pte$eff
+fb_data$scale_eff_cate <- te$scale_eff_cate
+fb_data$benchmark <- benchmark
+```
+
+---
+
+# 실습#2 : 서울시 행정동 생활관광 매력도 평가
+
+## 1) 데이터 read
+```{r}
+bikeseoul <- read_csv("./data/bikeseoul.csv")
+summary(bikeseoul)
+
+bikeseoul <- bikeseoul %>% filter(bike_rental_mean > 10)
+```
+
+## 2) 효율성 결정문제 정의
+
+팬데믹 이후 원거리 여행보다 생활관광을 통한 삶의 질 향상, 현대인의 스트레스 완화 등이 중요한 사회적 이슈로 떠오르는데, 
+따릉이를 이용한 생활관광 활성화 잠재력이 높은 행정동을 평가하기 위해 각 행정동이 가진 주요 생활관광 자원들이 따릉이 이용량을 
+얼마나 발생시키고 있는지 평가해보고자 함.
+
+즉, 관광자원이 Input, 따릉이 이용량이 Output 
+```{r}
+dea_set <- 
+  bikeseoul %>% 
+  mutate(location = history + theater + art + culture + museum + library + 
+           perfomance + park + doolle_munhwagil + gym + amusement_park + book,
+         fnb = general_restaurant + rest_restaurant) %>% 
+  select(bike_rental_mean, location, fnb, shopping, restroom)
+
+summary(dea_set)
+```
+
+## 3) CCR 및 BCC 분석
+```{r}
+te <- dea(dea_set, noutput = 1, orientation = 1, rts = 1) # CCR Model / CRS(불변규모수익)
+pte <- dea(dea_set, noutput = 1, orientation = 1, rts = 2) # BCC Model / VRS(가변규모수익)
+```
+
+## 4) 규모 효율성
+
+```{r}
+lambda_list <- te[,2:(nrow(te)+1)]
+te$scale_eff <- apply(lambda_list, 1, sum)
+te$scale_eff_cate <- ifelse(te$scale_eff > 1.000001, "DRS",
+                            ifelse(1 - te$scale_eff < 0.000001, "CRS", "IRS"))
+```
+
+```{r}
+table(te$scale_eff_cate)
+```
+
+## 5) 벤치마크
+
+```{r}
+DMU <- paste0("D", 1:nrow(dea_set))
+bike_bench <- cbind(DMU, lambda_list)
+```
+
+```{r}
+for (i in 1:nrow(bike_bench)){
+  each_lambda <- bike_bench[, i+1]
+  each_lambda[each_lambda <= 0] <- NA
+  each_lambda[each_lambda > 0] <- bike_bench[i,1]
+  bike_bench[, i+1] <- each_lambda
+}
+```
+
+```{r}
+benchmark <- bike_bench[,2]
+
+for (i in 2:length(bike_bench[,1])){
+  benchmark <- paste0(benchmark, ", ", bike_bench[,i+1])
+  benchmark <- gsub('NA, ', '', benchmark)
+}
+
+benchmark <- gsub(', NA', '', benchmark)
+```
+
+## 6) 결과 정리
+```{r}
+bikeseoul$DMU <- DMU
+bikeseoul$te <- te$eff
+bikeseoul$pte <- pte$eff
+bikeseoul$scale_eff_cate <- te$scale_eff_cate
+bikeseoul$benchmark <- benchmark
+```
+
+## 7) 추가 분석
+
+- 윌콕슨 test : 두개 집단
+- Kruskal-Wallis : 세개 이상 집단 
+
+```{r}
+bikeseoul$seoul_sites <- ifelse(bikeseoul$seoul_sites == 0, 0, 1)
+table(bikeseoul$seoul_sites)
+
+# RQ : 서울시의 정책이 실제 관광자원-따릉이 발생의 관계에 부합하는 정책인가? 
+wilcox.test(pte ~ seoul_sites, data = bikeseoul)
+
+bikeseoul %>% 
+  group_by(seoul_sites) %>% 
+  summarise(pte = mean(pte))
+```
+
+---
+
+# 실습#3 (Replacation Study)
+
+본 데이터는 한용희(2016)의 연구에 공개된 
+프랜차이즈 브랜드 데이터이다.
+
+## 1) 데이터 read
+```{r}
+fran_data <- read_csv("./data/fran_data.csv")
+summary(fran_data)
+```
+
+```{r}
+outlier <- c("호식이두마리치킨", "맥시칸치킨")
+fran_data <-
+  fran_data %>% 
+  filter(!(brand %in% outlier))
+```
+
+## 2) 효율성 결정문제 정의
+
+논문에서 1투입-3산출임을 주의하자.
+변수의 순서를 바꿔줘야 한다. 
+```{r}
+dea_set <- 
+  fran_data %>% 
+  select(-company, -brand) %>% 
+  select(fyear, sales, n_emp, init_invest)
+
+summary(dea_set)
+```
+
+## 3) CCR 및 BCC 분석
+```{r}
+te <- dea(dea_set, noutput = 3, orientation = 1, rts = 1)
+pte <- dea(dea_set, noutput = 3, orientation = 1, rts = 2)
+```
+
+## 4) 규모 효율성
+
+```{r}
+lambda_list <- te[,2:(nrow(te)+1)]
+te$scale_eff <- apply(lambda_list, 1, sum)
+te$scale_eff_cate <- ifelse(te$scale_eff > 1.000001, "DRS",
+                            ifelse(1 - te$scale_eff < 0.000001, "CRS", "IRS"))
+```
+
+```{r}
+table(te$scale_eff_cate)
+```
+
+## 5) 벤치마크
+
+```{r}
+lambda_list <- pte[,2:(nrow(pte)+1)]
+```
+
+```{r}
+DMU <- paste0("D", 1:nrow(dea_set))
+fran_bench <- cbind(DMU, lambda_list)
+```
+
+```{r}
+for (i in 1:nrow(fran_bench)){
+  each_lambda <- fran_bench[, i+1]
+  each_lambda[each_lambda <= 0] <- NA
+  each_lambda[each_lambda > 0] <- fran_bench[i,1]
+  fran_bench[, i+1] <- each_lambda
+}
+```
+
+```{r}
+benchmark <- fran_bench[,2]
+
+for (i in 2:length(fran_bench[,1])){
+  benchmark <- paste0(benchmark, ", ", fran_bench[,i+1])
+  benchmark <- gsub('NA, ', '', benchmark)
+}
+
+benchmark <- gsub(', NA', '', benchmark)
+```
+
+## 6) 결과 정리
+```{r}
+fran_data$DMU <- DMU
+fran_data$te <- te$eff
+fran_data$pte <- pte$eff
+fran_data$scale_eff_cate <- te$scale_eff_cate
+fran_data$benchmark <- benchmark
+```
+
+---
+
+# 실습#4. 프랜차이즈 데이터 DEA
+
+앞선 예시보다 더 많은, 그리고 다른 Sector의 예시를 수행해보자. 
+
+## 1) 데이터 read
+```{r}
+coffee_data <- read_csv("./data/coffee_com_data.csv")
+summary(fran_data)
+```
+
+의사결정문제
+
+가맹본부가 운영하는 총 매장 수, 임직원 수, 가맹점주에게 부과하는 비용 이 
+가맹본부의 매출을 얼마나 발생시키는가? 
+
+투입 : 매장 수(물적자원), 임직원 수(인적자원), 가맹점주가 부담하는 비용(가맹본부 영업역량)
+산출 : 가맹본부 매출액(기업의 성과)
+
+## 2) dea set 추출
+
+```{r}
+library(lubridate)
+
+dea_set <-
+  coffee_data %>% 
+  mutate(fyear = as.numeric((mdy("12/6/2021") - mdy(fran_start_year))/365)) %>%
+  select(sales_2020, fyear, total_store_2020, emp_total, total_fee)
+```
+
+## 3) CCR 및 BCC 분석
+```{r}
+te <- dea(dea_set, noutput = 1, orientation = 1, rts = 1)
+pte <- dea(dea_set, noutput = 1, orientation = 1, rts = 2)
+```
+
+## 4) 규모 효율성
+
+```{r}
+lambda_list <- te[,2:(nrow(te)+1)]
+te$scale_eff <- apply(lambda_list, 1, sum)
+te$scale_eff_cate <- ifelse(te$scale_eff > 1.000001, "DRS",
+                            ifelse(1 - te$scale_eff < 0.000001, "CRS", "IRS"))
+```
+
+```{r}
+table(te$scale_eff_cate)
+```
+
+## 5) 벤치마크
+
+```{r}
+lambda_list <- pte[,2:(nrow(pte)+1)]
+```
+
+```{r}
+DMU <- paste0("D", 1:nrow(dea_set))
+coffee_bench <- cbind(DMU, lambda_list)
+```
+
+```{r}
+for (i in 1:nrow(coffee_bench)){
+  each_lambda <- coffee_bench[, i+1]
+  each_lambda[each_lambda <= 0] <- NA
+  each_lambda[each_lambda > 0] <- coffee_bench[i,1]
+  coffee_bench[, i+1] <- each_lambda
+}
+```
+
+```{r}
+benchmark <- coffee_bench[,2]
+
+for (i in 2:length(coffee_bench[,1])){
+  benchmark <- paste0(benchmark, ", ", coffee_bench[,i+1])
+  benchmark <- gsub('NA, ', '', benchmark)
+}
+
+benchmark <- gsub(', NA', '', benchmark)
+```
+
+## 6) 결과 정리
+```{r}
+coffee_data$DMU <- DMU
+coffee_data$te <- te$eff
+coffee_data$pte <- pte$eff
+coffee_data$scale_eff_cate <- te$scale_eff_cate
+coffee_data$benchmark <- benchmark
+```
+
+```{r}
+coffee_result <-
+  coffee_data %>% 
+  mutate(fyear = as.numeric((mdy("12/6/2021") - mdy(fran_start_year))/365)) %>% 
+  select(DMU, company, brand, com_type, n_brand, emp_total, 
+         fyear, total_store_2020, total_fee, te, pte, scale_eff_cate, benchmark)
+```
+
+---
+
+## 7) 추가 분석 
+
+dea의 추가분석을 위해서는 토빗(Tobit) 회귀모형을 쓰는 것이 
+계수를 추정함에 있어 unbiased estimate을 찾아주는 것으로 알려져 있다. 
+
+이유는, 종속변수인 efficiency의 정의 상, 0~1 사이의 값으로 정의되는 절단된 데이터(Censored data) 이기 때문이다. 
+
+```
+install.packages("censReg")
+```
+
+```{r}
+library(censReg)
+```
+
+```{r}
+lower_bound <- min(coffee_result$pte, na.rm = T)
+upper_bound <- max(coffee_result$pte, na.rm = T)
+  
+tobit_model <- 
+  censReg(pte ~ com_type + n_brand + emp_total + fyear + total_store_2020 + total_fee, 
+          left = lower_bound, 
+          right = upper_bound, 
+          data = coffee_result)
+```
+
+```{r}
+summary(tobit_model)
+```
