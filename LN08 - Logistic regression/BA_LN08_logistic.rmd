@@ -1,0 +1,750 @@
+---
+title: "LN08 - Logistic Regression"
+author: "Dohyung Bang"
+output: html_document
+---
+
+```{r "setup", include = FALSE}
+knitr::opts_knit$set(root.dir = "C:/BA2021/")
+```
+
+```{r}
+library(caret) # data를 나눌때 / 혼동행렬 만들때 / k-fold CV
+library(readr) 
+library(tidyr)
+library(dplyr) 
+library(ggplot2) 
+```
+
+
+# 1. 예제#1 - 대출캠페인 승낙 모형 추정하기
+
+본 자료는 `Universal bank`가 5천명의 고객에게 실시한 개인대출 캠페인에 대한 자료이며, 고객정보를 바탕으로 개인대출 캠페인 승낙여부를 예측해보고자 한다.
+
+## 1-1. 데이터 탐색하기
+
+```{r}
+loan <- read_csv("./data/loan_acceptance.csv")
+```
+
+모형 수립에 앞서 변수가 어떻게 구성되어 있는지 살펴보자.
+
+```
+> Age : 나이
+> Experience : 직장경력
+> Education : 교육수준(1=대졸미만/2=대졸/3=대학원이상) -> factor
+> Income : 소득
+> ZIPCode : 우편번호 -> 동네 공시지가, 아파트 평당 가격 
+> Family : 가족 수
+> CCAvg : 월 평균 신용카드 사용액
+> Mortgage : 주택자산가치
+> SecuritiesAccount : 유가증권계정 유무(1=yes/0=no)
+> CDAccount : 양도성 예금증서 유무(1=yes/0=no)
+> Online : 인터넷뱅킹 사용유무(1=yes/0=no)
+> CreditCard : 자사 신용카드 사용유무(1=yes/0=no)
+> Acceptance(Y) : 개인대출상품 승낙여부(1=yes/0=no) 
+```
+
+먼저, 주요 변수 중 질적 변수를 양적변수로 변환해야 한다.
+
+R에서는 변수의 자료 타입이 `factor`인 경우, 분석 시 자동으로 0과 1로 코딩이 된다.
+
+따라서, 확인해야되는 사항은 두 변수 모두 `factor` 타입인지, 그리고 어떤 값이 0으로, 
+어떤 값이 1로 코딩이 되는지 파악해야 한다.
+
+모형수립에 포함될 변수 중 1 또는 0으로 이미 코딩되어있는 변수는 모형에 투입될 수 있으나 
+`Education`과 같이 `multinomial`변수의 경우, `factor` 타입으코 코딩되어있어야 모형에 투입될 수 있다는 것을 다시 한번 되새기자.
+
+`교육수준(Education)`이 어떤 타입으로 코딩되어 있는지 살펴보자.
+
+```{r}
+class(loan$Education)
+```
+
+교육수준은 현재 "integer" 타입으로 코딩되어 있다. 만약, 이 상태로 모형에 투입되면 교육수준 변수는 단순 구분의 의미가 아니라 양(Quantity)의 의미를 지니게 될 것이다. 따라서, `교육수준` 변수를 "factor" 타입으로 바꿔주도록 하자
+
+```{r}
+loan$Education <- as.factor(loan$Education)
+loan$Education <- factor(loan$Education)
+
+class(loan$Education)
+```
+
+## 1-2. Train set / Test set 나누기
+
+`CreateDataPartition`를 이용해`Train set` 과 `Test set`으로 나눈다. 각각의 비는 7:3으로 해보자.
+
+original data의 종속변수인 `Acceptance`를 바탕으로 70%를 분리하여 `in_train`으로 정의한다.
+```{r}
+set.seed(12345)
+train_idx <- 
+  createDataPartition(1:nrow(loan), 
+                     p = 0.7, 
+                     list = FALSE)
+
+loan_train <- loan[train_idx,]
+loan_test <- loan[-train_idx,]
+```
+
+
+## 1-3. 로지스틱 분류모형 학습(Learning)
+
+R에서 로지스틱 모형은 별도의 패키지를 요구하지 않는다. 
+
+내장된 `glm()` 함수를 이용해 구현할 수 있으며, 
+함수의 쓰임은 선형회귀모형을 구현하는 `lm()`과 거의 유사하다.
+
+```
+glm() : Generalized linear model
+lm() : Linear model
+```
+
+```{r}
+# 첫번째 방법
+loan_model <- 
+  glm(Acceptance ~ Age+Experience+Education+Income+Family+CCAvg+Mortgage+
+        `Securities Account`+`CD Account`+Online+CreditCard, 
+      family = binomial, # 2개짜리 분포  
+      data = loan_train)
+
+
+names(loan)
+
+# 두번째 방법 
+loan_model <- 
+  glm(Acceptance ~.-ID-`ZIP Code`, 
+      family = binomial,
+      data = loan_train) # in-sample problem 주의!
+```
+
+```{r}
+summary(loan_model)
+```
+
+```{r}
+result <- summary(loan_model)
+coff_table <- result$coefficients %>% as.data.frame()
+
+write.csv(coff_table, "./loan_logistic_result.csv")
+```
+
+## 1-4. 예측(Prediction)
+
+로지스틱에서도 예측할 때는 `predict()` 함수를 써준다.
+단, 분류모형에서는 `predict()`에 `type = "response"` 이라는 옵션을 추가해줘야 한다. 
+
+```{r}
+loan_pred <- 
+  predict(loan_model, 
+          loan_test, 
+          type = "response") # response / class / label 
+
+View(loan_pred)
+
+View(loan_pred %>% 
+       as.data.frame() %>% 
+       round(digit = 3))
+```
+
+위의 예측결과는 현재 확률값으로 주어져 있기때문에 생존확률을 0.5가 넘으면 1, 0.5보다
+낮으면 0으로 다시 코딩해보자. 위의 예제와 마찬가지로 `ifelse()` 함수를 써보자. 
+
+```{r}
+loan_pred_class <- ifelse(loan_pred >= 0.5, 1, 0)
+View(loan_pred_class)
+
+class(loan_pred_class)
+```
+
+## 15. 로지스틱 분류모형 평가(Evaluation)
+
+### 1-5-1. 혼동행렬(Confusion Matrix)
+
+이제, 혼동행렬(Confusion matrix)을 만들어보자.
+주의할 점은 우리가 다루는 종속변수 Y는 Class 즉, 범주형 변수여야 한다.
+
+분류모형에서 평가는 혼동행렬, ROC, AUC 이용해야 되는데 현재 예측된 y(y_hat)은 범주형 값이 아니다. 
+
+따라서, y_hat을 범주형으로 바꿔줘야 한다.
+
+주의할 사항은 보통 클래스가 `0` 또는 `1`로 코딩이 되어있어 
+`numeric` 혹은 `integer`로 인식하므로 `factor`로 바꿔주도록 한다.
+
+혼동행렬에 들어가는 벡터는 항상 `factor` 타입이어야 한다. 
+
+```{r}
+loan_pred_class <- as.factor(loan_pred_class)
+```
+
+```{r}
+actual_acceptance <- as.factor(loan_test$Acceptance)
+```
+
+
+이제 분류된 결과를 바탕으로 모형검증을 해보도록 한다. 
+모형 검증을 위해 `confusionMatrix()`함수를 이용해 혼동행렬을 생성한다.
+
+참고 - 만약, `e1071`이 없다는 에러가 발생하면,
+아래 코드를 실행해 `e1071` 패키지를 설치해주자.
+```
+install.packages("e1071")
+```
+
+```{r}
+library(caret)
+confusionMatrix(loan_pred_class, actual_acceptance)
+```
+
+### 1-5-2. ROC Curve 및 AUC 시각화하기
+
+정확도(Accuracy) 외 ROC 커브와 AUC를 시각화해 성능을 추가적으로 살펴보자.
+ROC 커브를 그리기 위해 `Epi` 패키지를 먼저 설치한다.
+
+```
+install.packages("Epi")
+```
+
+ROC(logistic으로 예측된 확률값, test set의 실제 CLASS)
+    
+```{r}
+library(Epi)
+
+ROC_plot <- ROC(loan_pred, actual_acceptance)
+ROC_plot$AUC
+```
+
+---
+
+#### 1-5-3. `Selected Model`을 실제 적용하는 법
+
+```{r}
+optimal_model <- loan_model
+```
+
+
+```{r}
+loan_target <- read_csv("./data/loan_campaign_target.csv")
+```
+
+```{r}
+loan_target$Education <- factor(loan_target$Education, levels = c(1,2,3))
+
+prediction <- predict(optimal_model,
+                      loan_target,
+                      type = "response")
+
+prediction
+
+prediction <- round(prediction, digit = 3)
+View(prediction)
+
+prediction_class <- ifelse(prediction > 0.5, 1, 0) 
+View(prediction_class)
+```
+
+```
+# 적용방안 
+문제: 가격 coupon을 보내고자 한다.
+
+조건 : 쿠폰 1회 당 2천원 변동비 
+To do : 
+- 1) 100만명 중 만명 뽑아서 쿠폰 보낼 예정
+- 2) 분석용 Data -> 학습 -> 예측 -> 평가 
+- 3) 2)번의 싸이클 반복 후 Best model 선정
+- 4) Best model로 100만명 예측 
+- 5) Prob 기준으로 오름 차순 => 1만명 끊으면 됨
+- 6) Prob 오름차순 -> 확률이 0.5보다 큰 고객이 6700명 끊기면 ? => 6700명만 보내자.
+
+산출물 : 
+1) 어떤 고객에게 접근해야되는지? 
+2) 타겟 고객을 몇 명으로 삼아야 하는지? 만명 -> 6700명
+
+결론 
+- `비용 누수`를 줄이면서, `캠페인 성공률`을 높일 수 있다. 
+```
+
+---
+
+# 2. 예제#2 : Employee 이탈 여부 예측 
+
+## 2-1. 데이터 탐색하기 
+
+```{r}
+hr_data <- read_csv("./data/HR_DATA.csv")
+```
+
+```
+Independent/Explainatory/Predictive
+- satisfaction_level : 직무 만족도 설문결과
+- last_evaluation : 직전 개별 평가점수
+- number_project : 참여 프로젝트 수
+- average_monthly_hours : 월 평균 근무시간
+- time_spend_company : 근속년수
+- Work_accident : 사고 여부
+- promotion_last_5years : 최근 5년 간 승진여부
+- sales : 부서 구분
+- salary : low / medium / high
+
+Target variable(Y) :
+ - left : 이탈하면 1, 남아있으면 0
+```
+
+```{r}
+table(hr_data$left)
+str(hr_data)
+```
+
+Y 변수인 `left`는 0과 1로 코딩되어 있다.
+
+만약, 1과 2로 코딩되어 있다면, `ifelse`문을 이용해 0과 1로 바꿔주도록 하자.
+
+```
+hr_data$left <- ifelse(hr_data$left == 2, 0, 1)
+```
+
+어떤 범주가 0이고 어떤 범주가 1이냐는 분석하는 사람이 Target을 어디로 잡느냐에 달려있다.
+
+```{r}
+table(hr_data$left)
+```
+
+```{r}
+ggplot(hr_data, 
+       aes(x=as.factor(left), 
+           y=satisfaction_level)) +
+  geom_boxplot()
+```
+
+t-test를 한번 해보자.
+평균적으로 이탈한 종사원 집단이 남아있는 집단보다
+직무 만족도가 0.22만큼 작다. 
+```{r}
+t.test(satisfaction_level ~ as.factor(left),
+       data=hr_data)
+wilcox.test(satisfaction_level ~ as.factor(left),
+       data=hr_data)
+```
+
+```{r}
+ggplot(hr_data, 
+       aes(x=as.factor(left), 
+           y=number_project)) +
+  geom_boxplot()
+```
+
+이탈한 종사원들의 참여 프로젝트 수가 
+평균 0.07개 더 많더라. 
+```{r}
+t.test(number_project ~ as.factor(left),
+       data=hr_data)
+```
+
+```{r}
+ggplot(hr_data, 
+       aes(x=as.factor(left), 
+           y=time_spend_company)) +
+  geom_boxplot()
+```
+
+## 2-2. Train set 과 Test set으로 나누기
+
+분류 예측을 어떻게 하는지 살펴보자. 
+먼저 데이터를 Train set 과 Test set으로 나눠준다. 
+```{r}
+set.seed(12345)
+train_idx <- 
+  createDataPartition(1:nrow(hr_data), 
+                      p = 0.7, 
+                      list = FALSE)
+hr_train <- hr_data[train_idx,]
+hr_test <- hr_data[-train_idx,]
+```
+
+## 2-3. Train set으로 `학습`시키기
+```{r}
+hr_model <- glm(left~., 
+                data = hr_train, 
+                family = binomial)
+summary(hr_model)
+```
+
+더미변수의 수 = 범주의 수 - 1 
+
+```{r}
+table(hr_data$sales)
+```
+
+## 2-4. Test set으로 `예측`하기
+```{r}
+predicted_left_prob <- 
+  predict(hr_model, 
+          hr_test, 
+          type = "response")
+
+View(predicted_left_prob)
+```
+
+## 2-5. 모형 평가하기 
+```{r}
+predicted_left_class <- 
+  ifelse(predicted_left_prob > 0.5, 1, 0)
+View(predicted_left_class)
+```
+
+이제 비교 대상인 실제 class를 가져온다. 
+```{r}
+actual_left_class <- hr_test$left
+```
+
+
+혼동행렬을 만들기 위해서는 클래스 변수는 반드시 `factor`여야 한다.
+
+일반적으로 0과 1로 코딩되어 있는 경우, `numeric`으로 되어있는 경우가 많으므로 변수 타입을 `factor`로 변환시켜 주자.
+```{r}
+predicted_left_class # 예측한 class
+actual_left_class # 실제 class
+
+class(predicted_left_class)
+class(actual_left_class)
+
+# factor로 변환
+predicted_left_class <- predicted_left_class %>% as.factor
+actual_left_class <- actual_left_class %>% as.factor
+```
+
+Confusion Matrix로 성능을 비교해보자.
+```{r}
+confusionMatrix(predicted_left_class, 
+                actual_left_class,
+                positive = "1")
+```
+
+
+## 2-6. ROC curve와 AUC 값 구하기
+
+정확도(Accuracy) 외 ROC 커브와 AUC를 시각화해 성능을 추가적으로 살펴보자.
+
+```{r}
+library(Epi)
+```
+
+```{r}
+ROC(predicted_left_prob, actual_left_class)
+```
+
+
+# 3. 예제#3 - 호텔 객실 예약 Cancelation 예측 모형
+
+## 3-1. 데이터 준비하기
+
+본 자료는 `Data in Brief` 저널에 Publish된 자료로 
+연구목적으로도 활용가능한 자료이다.
+
+```{r}
+hotel <- read_csv("./data/hotel_bookings.csv") %>% na.omit()
+```
+
+```{r}
+set.seed(1234)
+train_idx <- createDataPartition(1:nrow(hotel), 
+                                 p = 0.7, 
+                                 list = FALSE)
+hotel_train <- hotel[train_idx,]
+hotel_test <- hotel[-train_idx,]
+```
+
+
+## 3-2. Simple EDA
+```{r}
+ggplot(hotel, aes(x=hotel)) +
+  geom_bar() +
+  xlab("Hotel") +
+  ylab("Count")
+```
+
+```{r}
+ggplot(hotel, aes(x = as.factor(is_canceled)))+
+  geom_bar() +
+  facet_wrap(~hotel) +
+  scale_x_discrete(labels = c("No","Yes")) + 
+  xlab("Canceled")
+  ylab("Count")
+```
+
+
+## 3-3. 학습(Learning)
+```{r}
+hotel_model <- 
+  glm(is_canceled ~ hotel + lead_time + arrival_date_month +
+        children + market_segment + is_repeated_guest + 
+        adults + babies + previous_cancellations + 
+        deposit_type + booking_changes + reserved_room_type +
+        adr + days_in_waiting_list + customer_type +
+        total_of_special_requests, 
+      data = hotel_train , 
+      family = binomial)
+```
+
+## 3-4. 예측(Prediction)
+```{r}
+hotel_pred <- predict(hotel_model, 
+                      hotel_test, 
+                      type = "response")
+summary(hotel_model)
+```
+
+## 3-5. 평가(Evaluation)
+```{r}
+hotel_pred_class <- ifelse(hotel_pred > 0.5, 1, 0)
+```
+
+```{r}
+hotel_actual_class <- hotel_test$is_canceled %>% as.factor()
+hotel_pred_class <- hotel_pred_class %>% as.factor()
+```
+
+```{r}
+confusionMatrix(hotel_pred_class, 
+                hotel_actual_class, 
+                positive = "1")
+```
+
+
+---
+
+<다음시간>
+
+# 4. `Class 불균형` 문제 해결
+
+- 오버샘플링 : 적은 쪽 데이터를 뻥튀기 하는 방법
+- 언더샘플링 : 많은 쪽 데이터를 줄이는 방법
+
+## 4-1. 오버샘플링(Over Sampling)
+
+```{r}
+hr_data <- read_csv("./data/HR_DATA.csv")
+
+hr_data$left %>% class()
+  
+hr_data$left <- factor(hr_data$left)
+table(hr_data$left)
+```
+
+오버 샘플링을 위해서는 `caret` 패키지의 `upSample()` 함수를 쓴다.
+
+```{r}
+x_data <- 
+  hr_data %>% 
+  select(-left)
+class <- hr_data$left
+```
+
+```{r}
+hr_upsampled_data <- 
+  upSample(x_data, class)
+```
+
+```{r}
+table(hr_data$left)
+table(hr_upsampled_data$Class)
+```
+
+## 4-2. 언더샘플링/다운샘플링
+
+언더샘플링은 `downSample()` 함수를 이용하면 된다. 
+```{r}
+x_data <- hr_data %>% 
+  select(-left)
+class <- hr_data$left
+hr_downsampled_data <- downSample(x_data, class)
+```
+
+```{r}
+table(hr_downsampled_data$Class)
+```
+
+다운샘플링한 샘플을 이용해 모형을 수립해보자.
+```{r}
+hr_downsample_model <- 
+  glm(Class ~ ., 
+      data = hr_downsampled_data, 
+      family = binomial)
+summary(hr_downsample_model)
+```
+
+
+---
+
+
+## 4-3. 오리지널 모형과 비교하기
+
+## 4-3-1. 오리지널 모형
+```{r}
+set.seed(1234)
+train_idx <- createDataPartition(1:nrow(hr_data), 
+                                 p = 0.7, 
+                                 list = FALSE)
+hr_train <- hr_data[train_idx,]
+hr_test <- hr_data[-train_idx,]
+```
+
+```{r}
+hr_model <- 
+  glm(left~., 
+      data = hr_train, 
+      family = binomial)
+```
+
+```{r}
+predicted_left_prob <- 
+  predict(hr_model, 
+          hr_test, 
+          type = "response")
+
+predicted_left_class <- 
+  ifelse(predicted_left_prob > 0.5, 1, 0)
+
+actual_left_class <- hr_test$left
+```
+
+```{r}
+predicted_left_class <- 
+  predicted_left_class %>% as.factor
+actual_left_class <- 
+  actual_left_class %>% as.factor
+```
+
+```{r}
+original_conf <- 
+  confusionMatrix(predicted_left_class, 
+                  actual_left_class,
+                  positive = "1")
+
+glm_acc <- original_conf$overall["Accuracy"]
+glm_sens <- original_conf$byClass["Sensitivity"]
+glm_spec <- original_conf$byClass["Specificity"]
+
+perf_ori <- 
+  cbind("original", glm_acc, glm_sens, glm_spec)
+```
+
+```{r}
+perf <- c()
+perf <- rbind.data.frame(perf, perf_ori)
+```
+
+### 4-3-2. 업샘플링 모형 
+```{r}
+set.seed(1234)
+train_idx <- 
+  createDataPartition(1:nrow(hr_upsampled_data), 
+                     p = 0.7, 
+                     list = FALSE)
+hr_train <- hr_upsampled_data[train_idx,]
+hr_test <- hr_upsampled_data[-train_idx,]
+```
+
+```{r}
+hr_upsample_model <- 
+  glm(Class~., 
+      data = hr_train, 
+      family = binomial)
+```
+
+```{r}
+predicted_left_prob <- 
+  predict(hr_upsample_model, 
+          hr_test, type = "response")
+predicted_left_class <- 
+  ifelse(predicted_left_prob > 0.5, 1, 0)
+actual_left_class <- hr_test$Class
+```
+
+```{r}
+predicted_left_class <- 
+  predicted_left_class %>% as.factor
+actual_left_class <- 
+  actual_left_class %>% as.factor
+```
+
+```{r}
+upsample_conf <- 
+  confusionMatrix(predicted_left_class, 
+                  actual_left_class, 
+                  positive = "1")
+```
+
+```{r}
+glm_acc <- upsample_conf$overall["Accuracy"]
+glm_sens <- upsample_conf$byClass["Sensitivity"]
+glm_spec <- upsample_conf$byClass["Specificity"]
+
+perf_upsample <- 
+  cbind("upsample", glm_acc, glm_sens, glm_spec)
+```
+
+```{r}
+perf <- rbind(perf, perf_upsample)
+```
+
+
+### 4-3-3. 다운샘플링 모형 
+```{r}
+set.seed(1234)
+train_idx <- 
+  createDataPartition(1:nrow(hr_downsampled_data),
+                     p = 0.7, 
+                     list = FALSE)
+hr_train <- hr_downsampled_data[train_idx,]
+hr_test <- hr_downsampled_data[-train_idx,]
+```
+
+```{r}
+hr_downsample_model <- 
+  glm(Class~., 
+      data = hr_train, 
+      family = binomial)
+```
+
+```{r}
+predicted_left_prob <- 
+  predict(hr_downsample_model, 
+          hr_test, type = "response")
+predicted_left_class <- 
+  ifelse(predicted_left_prob > 0.5, 1, 0)
+actual_left_class <- hr_test$Class
+```
+
+```{r}
+predicted_left_class <- 
+  predicted_left_class %>% as.factor
+actual_left_class <- 
+  actual_left_class %>% as.factor
+```
+
+```{r}
+downsample_conf <- 
+  confusionMatrix(predicted_left_class, 
+                  actual_left_class, 
+                  positive = "1")
+```
+
+```{r}
+glm_acc <- downsample_conf$overall["Accuracy"]
+glm_sens <- downsample_conf$byClass["Sensitivity"]
+glm_spec <- downsample_conf$byClass["Specificity"]
+perf_downsample <- 
+  cbind("downsample", glm_acc, glm_sens, glm_spec)
+```
+
+```{r}
+perf <- rbind(perf, perf_downsample)
+```
+
+### 4-3-4. 비교하기 
+
+```{r}
+View(perf)
+```
+
+

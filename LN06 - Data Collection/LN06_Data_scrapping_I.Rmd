@@ -1,0 +1,353 @@
+---
+title: "LN06 - Data Scrapping I"
+author: "Dohyung Bang"
+output: html_document
+---
+
+```{r "setup", include = FALSE}
+knitr::opts_knit$set(root.dir = "C:/BA2021/")
+```
+
+# Java 경로 지정
+
+```{r}
+Sys.setenv(JAVA_HOME = "C:/Program Files/Java/jre1.8.0_291")
+```
+
+
+# 필요 패키지 설치
+
+```
+install.packages(c("xml2", 
+                   "httr", 
+                   "rJava", 
+                   "rvest", 
+                   "RSelenium"))
+```
+
+```{r}
+library(readr)
+library(xml2)
+library(httr)
+library(rvest)
+```
+
+---
+
+#1. 정적 컨텐츠 크롤링 
+
+## 1-1. `httr`패키지 이해하기
+
+타깃 url을 설정한 후 먼저 request를 한다.
+
+### 1-1-1. 목표 URL을 정의
+```{r}
+url <- 
+  "https://search.naver.com/search.naver?sm=tab_hty.top&where=nexearch&query=%EB%8F%99%EB%8C%80%EB%AC%B8%EA%B5%AC+%EB%82%A0%EC%94%A8&oquery=%EC%98%A4%EB%8A%98%EC%9D%98+%EB%82%A0%EC%94%A8&tqi=hTnvYlp0Jy0ssbP%2FOgNssssss08-452338"
+```
+
+### 1-1-2. 요청(Request) 및 응답(Reponse)
+
+`GET()` 함수를 이용해 request를 하고 나면
+response 값은 html 문서 형태로 받아온다. 
+
+```{r}
+response <- GET(url) # request
+View(response)
+response
+```
+
+### 1-1-3. HTML 문서 추출
+
+request한 결과값(Response)은 `content`함수를 이용해 확인할 수 있다.
+```{r}
+html_doc <- content(response)
+html_doc
+```
+
+---
+
+## 1-2. `rvest` 패키지 이해하기
+
+## 1-2-1. `read_html()`함수를 이용한 request & response
+
+`rvest`패키지의 `read_html()`는 request와 response 과정을 한번에 수행한다.
+
+### 1) 목표 URL 정의
+```{r}
+url <- 
+  "https://search.naver.com/search.naver?sm=tab_hty.top&where=nexearch&query=%EB%8F%99%EB%8C%80%EB%AC%B8%EA%B5%AC+%EB%82%A0%EC%94%A8&oquery=%EC%98%A4%EB%8A%98%EC%9D%98+%EB%82%A0%EC%94%A8&tqi=hTnvYlp0Jy0ssbP%2FOgNssssss08-452338"
+```
+
+### 2) 요청(Request) 및 응답(Reponse)
+
+`read_html()` 함수는 httr 패키지에서 `GET()` + `content()` 했던 과정을 한번에 수행한다.  
+```{r}
+html_document <- read_html(url)
+html_document
+```
+
+## 1-2-2. 특정 tag 기준 컨텐츠 추출
+```{r}
+html_document %>%
+  html_nodes("div")
+```
+
+## 1-2-3. 특정 tag의 특정 속성(attribute)으로 추출하기 
+
+### 1) `class name` 기준으로 추출하기 
+
+class name은 점(dot)으로 인식시켜준다. 
+```
+html_nodes("태그이름") : 해당 태그를 가진 컨텐츠
+html_nodes("태그이름.클래스이름") : 해당 태그에 해당 클래스이름을 가진 컨텐츠
+html_nodes(".클래스이름") : 해당 클래스 이름을 가진 컨텐츠 
+html_nodes("태그이름.클래스이름 .클래스이름")
+html_nodes("태그이름 태그이름.클래스이름")
+html_nodes("태그이름 .클래스이름")
+```
+
+띄어쓰기를 통해 하위 elements로 바로 접근도 가능하다. 
+
+아래 코드들은 모두 동일하게 오늘의 기온을 가져오는 코드이다. 
+```{r}
+html_document %>%
+  html_nodes("div.weather_info div.temperature_text 
+             strong") 
+```
+
+내가 원하는 정보가 어디에 있는지는 파악했다. 그럼, 원하는 정보만 추출하려면?
+
+```{r}
+html_document %>%
+  html_nodes("div.weather_info div.temperature_text 
+             strong") %>%
+  html_text()
+```
+
+문자/특수기호 등을 제거하고, 숫자만 추출하고 싶다면 ?
+```{r}
+temp_vector <- 
+  html_document %>%
+  html_nodes("div.weather_info div.temperature_text 
+             strong") %>%
+  html_text() %>%
+  parse_number()
+
+
+current_temp <- temp_vector[1]
+current_temp
+```
+
+```{r}
+chart_list <- 
+  html_document %>%
+  html_nodes("ul.today_chart_list span.txt") %>%
+  html_text()
+
+
+pm10 <- chart_list[1]
+pm2.5 <- chart_list[2]
+o3 <- chart_list[3]
+
+pm10
+pm2.5
+o3
+```
+
+
+## 1-2-4. 태그(tag)와 속성(attribute) `이름` 확인하기 
+
+```{r}
+naver_weather <- 
+  html_document %>%
+  html_nodes("div.weather_info")
+naver_weather
+```
+
+### 1) `html_name()` 함수로 추출한 html 문서의 elements 들의 tag 이름 보기
+
+html_name() : 태그(tag/node)의 이름을 가져옴
+```{r}
+html_name(naver_weather)
+```
+
+### 2) `html_attr()` 함수로 추출한 html 문서의 특정 attribute name의 attribute value 확인하기
+
+html_attr() : 타겟 속성의 속성값(attribute value)들을 가져옴
+
+```{r}
+html_attr(naver_weather, "class")
+```
+
+### 3) Attribute Value를 꼭 따로 뽑아야 할 일이 있을까? 
+
+```{r}
+url <- "https://www.entrepreneur.com/franchise500/2019"
+```
+
+```{r}
+html_doc <- read_html(url)
+```
+
+```{r}
+html_doc %>%
+  html_nodes("a.block.w-full.col-span-2") %>% 
+  html_attr("href")
+```
+
+```{r}
+fran_url_source <- 
+  html_doc %>%
+  html_nodes("a.block.w-full.col-span-2") %>% 
+  html_attr("href")
+```
+
+```{r}
+fran_url_list <- 
+  paste0("https://www.entrepreneur.com", 
+         fran_url_source)
+View(fran_url_list %>% as.data.frame())
+```
+
+```{r}
+fran_name <- 
+  html_doc %>%
+  html_nodes("p.text-base.font-medium.text-gray-700.truncate") %>% 
+  html_text()
+
+fran_name
+```
+
+```{r}
+library(stringr)
+fran_name <- str_replace_all(fran_name, "[\n]", "")
+fran_name <- str_replace_all(fran_name, "[\t]", "")
+fran_name
+```
+
+
+```{r}
+fran_urls <- 
+  data.frame(name = fran_name,
+             url = fran_url_list)
+```
+
+만약, 500개 기업의 모든 url을 다 가져오고 싶다면? 
+```{r}
+total_df <- c()
+
+for(i in 1:10){
+  
+  url <- 
+    paste0("https://www.entrepreneur.com/franchise500/2019/", i)
+  html_doc <- read_html(url)
+  
+  fran_url_source <- 
+    html_doc %>%
+    html_nodes("a.block.w-full.col-span-2") %>% 
+    html_attr("href")
+  
+  fran_url_list <- 
+    paste0("https://www.entrepreneur.com", 
+           fran_url_source)
+  fran_name <- 
+    html_doc %>%
+    html_nodes("p.text-base.font-medium.text-gray-700.truncate") %>% 
+    html_text() %>% 
+    str_replace_all("[\n]", "") %>% 
+    str_replace_all("[\t]", "")
+  
+  fran_urls <- 
+    data.frame(name = fran_name,
+             url = fran_url_list)
+  
+  total_df <- rbind(total_df, fran_urls)
+}
+```
+
+```{r}
+View(total_df)
+```
+
+---
+
+### 1-3-2. 실습#1 : 프랜차이즈 정보 수집
+
+#### 1) 페이지 구조 이해하기 
+```{r}
+url <- total_df[1,2]
+url
+```
+
+```{r}
+html_doc <- read_html(url)
+```
+
+#### 2) 주어진 페이지의 특성 추출하기 
+
+- 업종
+- 초기투자비(Initial investment)
+- 총 매장 수(2021년 기준)
+
+
+##### 업종 
+```{r}
+html_doc %>% 
+  html_nodes("a.text-gray-500.text-base.font-light.leading-5") %>% 
+  html_text()
+```
+
+##### 랭크/초기투자비/매장수
+```{r}
+company_info <- 
+  html_doc %>% 
+  html_nodes('div.block.w-full span') %>% 
+  html_text()  %>% 
+  str_replace_all("[\n]", "") %>% 
+  str_replace_all("[\t]", "") 
+```
+
+```{r}
+rank <- company_info[1]
+IV <- company_info[3]
+Units <- company_info[4]
+```
+
+#### 3) 각 기업 POST url에 접근해 원하는 요소 추출
+```{r}
+total_df$type <- NA
+total_df$rank <- NA
+total_df$IV <- NA
+total_df$Units <- NA
+
+for (i in 1:nrow(total_df)){
+  
+  print(paste0(i, "번째 기업 수집 중입니다.."))
+ 
+  url <- total_df[i,2]
+  html_doc <- read_html(url)
+  
+  type <- 
+    html_doc %>% 
+    html_nodes("a.text-gray-500.text-base.font-light.leading-5") %>% 
+    html_text()
+  
+  company_info <- 
+    html_doc %>% 
+    html_nodes('div.block.w-full span') %>% 
+    html_text()  %>% 
+    str_replace_all("[\n]", "") %>% 
+    str_replace_all("[\t]", "") 
+  
+  rank <- company_info[1]
+  IV <- company_info[3]
+  Units <- company_info[4]
+  
+  total_df[i,"type"] <- type
+  total_df[i,"rank"] <- rank
+  total_df[i,"IV"] <- IV
+  total_df[i,"Units"] <- Units
+}
+
+```

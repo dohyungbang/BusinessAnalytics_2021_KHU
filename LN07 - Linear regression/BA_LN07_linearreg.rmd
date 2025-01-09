@@ -1,0 +1,790 @@
+---
+title: "LN06 - Rregression I"
+author: "Dohyung Bang"
+output: html_document
+---
+
+```{r "setup", include = FALSE}
+knitr::opts_knit$set(root.dir = "C:/BA2021/")
+```
+
+```{r}
+library(readr) 
+library(dplyr)
+library(ggplot2)
+```
+
+
+# 1. 단순 회귀분석(Simple Linear Regression) 예제 : OECD 주요국가 1인당 GDP와 자영업자 비중 간 관계
+
+## 1-1. 데이터 불러오기
+```{r}
+selfemp <- 
+  read_csv("./data/selfemp.csv", 
+            locale = locale("ko", 
+                            encoding = "EUC-KR"))
+```
+
+```{r}
+ggplot(data = selfemp, 
+       aes(x = Selfemp, y = gdp)) +
+  geom_point() +
+  geom_smooth()
+```
+
+```{r}
+summary(selfemp)
+```
+
+
+## 1-2. 모형 수립하기 
+
+선형 회귀모형(Linear Regression)은 `lm()`함수를 이용한다. 
+
+y(결과, output, 종속변수, ) = ax1 + bx2 + cx3 + ...(원인, Input, 독립변수,..)
+
+lm : linear model 
+
+formula : 결과 ~ 원인1 + 원인2 + 원인3
+
+```
+lm(y ~ x1, data = Data) # 단순회귀분석
+lm(y ~ x1 + x2 + x3, data = Data) # 다중회귀분석 
+```
+
+문제 정의 : 
+국가경제에서 `자영업이 차지하는 비중`이 `경제력(1인당 GDP)`에 미치는 영향
+```{r}
+selfemp_lm <- lm(gdp ~ Selfemp, data = selfemp)
+```
+ 
+```{r}
+summary(selfemp_lm)
+```
+
+```
+베타1햇 : -1682
+
+즉, 자영업자 비중 1% 증가하면, GDP는 1,682달러 감소한다. 
+```
+
+```{r}
+selfemp_lm$residuals # 잔차(residuals)
+selfemp_lm$fitted.values # y_hat
+```
+
+
+
+```{r}
+# 실제 y에서 회귀모형으로 설명할 수 없는 부분
+selfemp$residual <- selfemp_lm$residuals 
+
+# y hat 회귀모형으로 실제 y에서 설명할 수 있는 부분 
+selfemp$y_hat <- selfemp_lm$fitted.values
+
+# 두개 sum
+selfemp$sum <- selfemp$residual + selfemp$y_hat
+```
+
+저장한 Model의 Output을 볼때는 `summary()` 함수를 쓴다. 
+```{r}
+summary(selfemp_lm)
+```
+
+```{r}
+selfemp$y_hat2 <- 67588-1682*selfemp$Selfemp
+```
+
+추정 회귀식(Estimated Regression Model) 
+: GDP = 67,588(베타0햇) - 1,682(베타1햇)*Selfemp 
+
+
+## 1-3. 잔차 `정규성` 확인하기 
+
+잔차의 정규성은 아래와 같이 확인할 수 있다. 
+2번째 그래프(Q-Q plot)를 확인하면 된다. 
+```{r}
+plot(selfemp_lm)
+```
+
+
+## 1-4. 단순회귀분석 시각화 
+
+독립변수가 하나이기 때문에 종속변수와 합쳐서 2차원이 되므로 아래와 같이 시각화가 가능하다.
+
+독립변수의 수가 2개 이상이 되면, 시각화로 표현할 수는 없다.
+
+```{r}
+library(ggplot2)
+```
+
+```{r}
+ggplot(data = selfemp, 
+       aes(x = Selfemp, y = gdp)) +
+  geom_point(size = 2) + 
+  stat_smooth(method = "lm") 
+```
+
+
+---
+
+# 2. 다중회귀분석(Multiple Regression Model)
+
+## 2-1. 도요타(Toyota) 중고차 가격예측 실습
+
+본 자료는 도요타의 코롤라(Corolla) 중고 자동차에 관한 데이터이며, 회귀분석을 이용해 코롤라 중고 자동차의 가격을 예측하는 모형을 수립해보고자 한다. 
+
+### 2-1-1. 데이터 준비하기(Data preparation)
+
+```{r}
+toyota <- read.csv("./data/ToyotaCorolla.csv")
+summary(toyota)
+```
+
+본 자료에서 제공한 데이터의 변수명은 각각 다음과 같이 정의된다.
+
+```
+의사결정 사항
+- 중고차 `가격(Y)`을 어떻게 결정할까?
+```
+
+```
+> Price : 중고차 가격(유로)
+> Age : 년식(2004년 8월 기준)
+> KM : 주행거리(킬로미터)
+> FuelType : 유종(휘발유(Petrol), 경유(diesel), 천연가스(CNG))
+> HP : 마력(Horsepower)
+> MetColor : 메탈색상여부(Yes=1, No=0)
+> Automatic : 변속기(자동=1, 수동=0)
+> CC : 실린더 볼륨
+> Doors : 문짝 수
+> Weight : 차량중량(파운드)
+```
+
+
+### 2-1-2. 다중회귀(Multiple regression) 모형 수립하기 및 결과 해석
+
+```{r}
+toyota_lm <- 
+  lm(Price ~ Age + KM + FuelType + HP + MetColor + Automatic + CC + Doors + Weight, 
+     data = toyota)
+
+summary(toyota_lm)
+```
+
+해석
+```
+adjusted r^2 : 86.8%의 모형 설명력을 지닌다.
+
+코롤라 중고차 가격에 미치는 영향 요인 중 `메탈색상 여부`와 
+`문짝 수`는 유의한 영향이 없는 것으로 나타났다. 
+
+그 외 나머지 변수는 모두 유의한 것으로 나타났다. 
+
+Age : 년식이 1년 증가하면, 가격은 122유로 감소함
+KM : 주행거리가 1000KM 증가하면, 16유로 감소함
+FuelTypeDiesel : CNG 대비 Diesel이 평균 3390유로 비싸다
+FuelTypePetrol : CNG 대비 Petrol이 평균 1121유로 비싸다
+HP : 마력 1 증가하면, 60.81유로 증가함
+
+Automatic : 자동변속기가 수동변속기보다 평균 330.3유로 비쌈 
+CC : CC가 1 증가하면, 4.174 유로 감소함 
+Weight : 1파운드 증가하면, 20.01 유로 증가함
+```
+=> Age와 KM 는 작으면서, Diesel 이면서, HP 높으면서, 변속기가 자동이면서, CC는 작으면서, Weight는 무거울수록 높은 값을 받을 가능성이 높아진다. 
+
+참고 
+- 마침표(.)를 찍어주면, Y변수를 제외한 모든 변수를 집어넣으라는 의미가 된다. 
+```{r}
+toyota_lm <- lm(Price ~., data = toyota)
+summary(toyota_lm)
+
+toyota_lm <- lm(Price ~.-MetColor-Doors, data = toyota)
+summary(toyota_lm)
+```
+
+---
+
+# 3. 다중공선성 확인
+
+## 3-1. 다중공선성이 있는 임의의 변수 생성 
+
+도요타 데이터의 변수들 간 다중공선성도 확인해보자.
+
+먼저 원래의 `Age` 변수를 약간 변형해서 새로운 `Age_new` 변수를 생성한다.
+
+```{r}
+ggplot(toyota, aes(x = Age, y = Price)) + 
+  geom_point() +
+  geom_smooth(method = "lm")
+```
+
+`row.names()`로 행 번호를 추출해서 numeric으로 만든 다음, 
+짝수면 원래의 Age 변수에 1을 더해주고, 
+홀수면 그대로 두도록 해서 Age의 조작된 변수를 하나 만든다. 
+```{r}
+toyota$Age_new <- 
+  ifelse(as.numeric(row.names(toyota)) %% 2 == 0, #행번호가 짝수이면
+         toyota$Age + 1, 
+         toyota$Age)
+
+View(toyota %>% select(Age, Age_new))
+```
+
+#### `Original Age` 변수만 투입
+```{r}
+toyota_model <- 
+  lm(Price ~ Age, data = toyota)
+
+summary(toyota_model)
+```
+
+#### `New Age` 변수만 투입
+```{r}
+toyota_model <- 
+  lm(Price ~ Age_new, data = toyota)
+
+summary(toyota_model)
+```
+
+#### `Original Age` + `New Age` 모두 투입
+```{r}
+toyota_model <- 
+  lm(Price ~ Age + Age_new, data = toyota)
+
+summary(toyota_model)
+```
+
+## 3-2. 다중공선성 확인하기 
+
+상관관계를 간단히 확인하기 위해 `cor()`함수를 이용한다. 
+상관관계는 대수적 연산이 포함되므로 데이터를 매트릭스 형태로 변환해줘야 한다.
+
+다중공선성을 확인하는 방법이 별도로 있으나, 
+실무적으로는 상관관계만 파악해도 충분히 다중공선성 
+검증을 할 수 있다. 
+ 
+상관계수는 -1 ~ 1 사이의 값을 갖는다. 
+상관계수가 0에 가까우면 : 상관관계가 아예 없 다
+상관계수가 1에 가까우면 : 양(+)의 상관관계
+상관계수가 -1에 가까우면 : 음(-)의 상관관계
+ 
+```{r}
+cor(toyota$Age, toyota$Age_new)
+
+toyota_mat <-
+  toyota %>%
+  select(Price, Age, KM, HP, CC, Weight, Age_new) %>% 
+  as.matrix
+
+cor(toyota_mat) %>% round(digit = 3) %>% View()
+```
+
+---
+
+# 4. `가변수/더미변수(Dummy variable)` 이해하기
+
+## 4-1. 가변수/더미변수란 ? 
+
+```
+- 범주형 변수를 계량화하기 위해 0 또는 1의 값으로 처리하는 변수
+- 가변수/더미변수는 (전체 범주의 수-1)개 만큼의 변수가 생성됨
+
+ex) 
+성별 : 범주 2개(남/여) -> 더미변수 1개
+등급 : 범주 5개(A/B/C/D/E) -> 더미변수 4개
+```
+
+소득=교육수준(4+5)+직무(범주)+성별(범주)+직업(범주) 
+
+
+## 4-2. 더미변수 처리하기 
+
+### 4-2-1. 범주가 2개인 변수의 더미변수 처리
+
+더미변수의 수 = (해당변수가 가진 범주의 수 - 1)
+
+`MetColor` : 메탈컬러 YES(=1) vs No(=0)
+`Automatic` : 자동(=1) vs 수동(=0)
+
+```
+`Automatic`의 계수값을 해석하면, 
+수동에 비해 자동인 중고차가 "평균적으로" $330.3 더 높다. 
+```
+
+```{r}
+toyota_lm <-
+  lm(Price ~ Age + KM + 
+       HP + MetColor + Automatic + 
+       CC + Doors + Weight, data = toyota)
+summary(toyota_lm)
+```
+
+더미 변수는 반드시 0과 1로만 이뤄져야 하며, 항상 `범주-1`개의 더미변수가 생성된다.
+
+만약 2가지 범주가 존재하는 변수라면, 1개의 더미변수가 생성되며, Reference 범주가 0이 된다.
+
+범주가 2개인 변수는 데이터 생성 단계에서부터 
+해당하면 1, 그렇지 않으면 0
+으로 통상 많이 생성하므로 큰 이슈없이 해결 가능하다.
+
+```{r}
+summary(toyota$Automatic)
+class(toyota$Automatic)
+
+toyota$Auto_str <- 
+  ifelse(toyota$Automatic == 1, "자동", "수동")
+
+class(toyota$Auto_str)
+```
+
+"수동"이 기본적으로 0으로 설정되고, "자동"이 1로 설정됩니다.
+
+reference(0이 되는 범주)를 정하는 기준
+오름차순 기준(ex. 빠른 숫자, 빠른 알파벳)
+
+```{r}
+toyota_lm <-
+  lm(Price ~ Auto_str, 
+     data = toyota)
+
+summary(toyota_lm)
+```
+
+
+### 4-2-2. 범주가 3개 이상인 변수의 더미변수 처리
+
+범주가 3개 이상인데, `Factor` 혹은 `Character` 타입의 변수일 경우, `범주-1`개의 더미변수를 생성해야 한다.
+
+범주가 8개짜리 변수 = 더미변수 7개 생성
+
+- firm effect = 99개 더미변수 <- 100개 
+- time effect = 9개 더미
+- region effect = 16개 더미
+
+
+하지만, R의 대부분 패키지는 범주형 변수가 `factor`일 경우, 자동으로 더미변수로 모형에 반영된다. 
+이해를 위해서 직접 더미변수를 생성한 회귀모형과 그렇지 않은 회귀모형을 비교해보자.
+코롤라 자동차의 연료타입(FuelType) 변수를 이용해 더미변수를 생성하고자 한다. 
+
+연료타입(FuelType) 변수는 범주가 3개이므로 2개의 더미변수가 생성되어야 한다. 
+
+CNG를 `기준(Reference)`로 
+고정하고 더미변수를 생성해보자.
+```{r}
+table(toyota$FuelType)
+
+toyota$Fuel_D <- 
+  ifelse(toyota$FuelType == "Diesel", 1, 0)
+
+toyota$Fuel_P <-
+  ifelse(toyota$FuelType == "Petrol", 1, 0)
+
+
+toyota_subset <- select(toyota, 
+                        Price, 
+                        FuelType, 
+                        Fuel_D, Fuel_P)
+```
+
+회귀모형을 추정해보자. 
+```{r}
+toyota_model <- lm(Price ~ Fuel_D + Fuel_P,
+                   data = toyota_subset)
+summary(toyota_model)
+```
+```
+Fuel_D : CNG 대비 디젤이 평균 1873 유로 더 비싸다 (유의X)
+Fuel_P : CNG 대비 페트롤이 평균 1258 더 비싸다 (유의X)
+```
+
+직접 만든 가변수가 아닌, 원래 범주형 변수를 넣어보자.
+```{r}
+class(toyota_subset$FuelType)
+
+toyota_model <- 
+  lm(Price ~ FuelType, data = toyota_subset)
+summary(toyota_model)
+```
+
+이처럼 `lm()` 함수를 포함해 많은 함수가 
+`factor()` 혹은 `character()`이더라도 자동으로 
+더미변수로 처리해 모형에 반영함을 알 수 있다. 
+
+이때, reference가 되는 범주는 다음이 된다. 
+- 문자일 경우 : 알파벳이 가장 빠른 범주
+- 숫자일 경우 : 가장 작은 수 / factor로 코딩된 숫자 
+
+
+
+***하지만, 주의해야될 경우가 있다.***
+숫자일 경우, `factor()` 변수임을 명확히 해주지 않으면, 
+`integer()` 나 `numeric()`이 되면서 
+이상한 결과를 도출할 수 있다. 
+
+위의 연료타입 변수가 `character()`가 아니라 숫자로 
+CNG=1, Diesel=2, Petrol=3 으로 구분되어 있는 경우를 고려해보자. 
+```{r}
+toyota_subset$FuelType_num <- 
+  ifelse(toyota_subset$FuelType == "CNG", 1,              
+         ifelse(toyota_subset$FuelType == "Diesel", 2, 3))
+```
+
+클래스를 확인해보자.
+```{r}
+class(toyota_subset$FuelType_num)
+```
+
+`numeric()`으로 되어있는 `FuelType_num`을 그냥 넣을경우, 더미변수를 생성하지 않는다.
+
+이 모형이 유의한 모형인가?
+```{r}
+toyota_model <- 
+  lm(Price ~ FuelType, data = toyota_subset)
+summary(toyota_model)
+```
+
+```{r}
+toyota_model <- 
+  lm(Price ~ FuelType_num, data = toyota_subset)
+summary(toyota_model)
+```
+
+
+이럴 때는 사전에 변수의 타입을 바꿔주거나, 
+모형 formula 안에서 바꿔주는 방법이 있다.
+```{r}
+# 첫번째 방법
+toyota_subset$FuelType_num <- factor(toyota_subset$FuelType_num)
+class(toyota_subset$FuelType_num)
+
+toyota_model <- 
+  lm(Price ~ FuelType_num, data = toyota_subset)
+summary(toyota_model)
+
+# 두번째 방법
+toyota_model <- 
+  lm(Price ~ factor(FuelType_num), data = toyota_subset)
+summary(toyota_model)
+```
+
+
+"적합(fitting) & 설명" ======> "예측(Prediction)"
+
+---
+
+# 5. Learning Process 이해하기
+
+## 5-1. Train set 과 Test set 나누기
+
+이제 본격적인 모형 학습(Learning)에 앞서 학습시킬 훈련데이터(Train set)와 검증을 위한 검증데이터(Test set)으로 나누는 작업을 실시한다.
+
+Original data를 각각 훈련데이터와 검증데이터로 나누는 것은 `caret` 패키지의 `createDataPartition` 함수를 이용할 수 있으며, 본 실습에서는 `createDataPartition`를 이용해 Original data를 7:3으로 Train set과 Test set으로 나눈다.
+
+일반적으로
+```
+train 7 : test 3 => 대중적 
+train 8 : test 2 => 데이터가 충분하지 않을때 
+train 6 : test 4 => 데이터가 충분히 많을 때
+```
+
+먼저, caret 패키지를 설치 및 불러온다.
+```
+install.packages("caret")
+```
+
+```{r}
+library(caret)
+```
+
+```{r}
+toyota <- read_csv("./data/ToyotaCorolla.csv")
+```
+
+이제, `createDataPartition()`를 이용해 
+Train set 과 Test set으로 데이터를 나누는 작업을 실시한다.
+
+`toyota` 데이터의 전체 길이를 구한 후,
+그 중 70%에 해당하는 행 번호를 **랜덤**하게 추출한다.
+*참고 - 랜덤 추출을 하는 씨드 넘버를 고정할 수 있다. 
+
+```{r}
+set.seed(1234)
+index_train <- 
+  createDataPartition(1:nrow(toyota), 
+                      p = 0.7, # train data의 비중
+                      list = FALSE) 
+View(index_train)
+```
+
+그 다음 선언된 `index_train`에 있으면 train set으로 정의하고, 없으면 test set으로 정의한다.
+```{r}
+toyota_train <- toyota[index_train,] # 모델 학습
+toyota_test <- toyota[-index_train,] # 모델 평가
+```
+
+## 5-2. 모형수립(Building the model): 모형 학습시키기(Learning)
+
+준비된 자료로부터 이제 실제 예측모형을 수립할 것이다.
+모형을 수립하는 것은 매우 간단하다. 모형에 훈련데이터를 넣고 적합(Fitting)시키면 예측모형을 얻을 수 있다.
+
+회귀분석이든, 로지스틱 어떤 모형으로 모델링 할 시 
+앞으로는 Train set으로만 학습 시킨다. 
+```{r}
+# 방법 1 - 다 넣기
+toyota_model <-
+  lm(Price ~ Age + KM + FuelType + HP + MetColor + Automatic + CC + Doors + Weight,
+     data = toyota_train)
+
+# 방법 2 - 다 넣기
+toyota_model <- lm(Price ~ ., data = toyota_train)
+
+# 방법 3 - MetColor만 빼기
+toyota_model <- lm(Price ~ .-MetColor, data = toyota_train)
+```
+
+## 5-3. 분석결과 해석(Interpretation)
+
+모형을 통해 도출된 분석결과를 볼때는 'summary' 함수를 쓴다.
+```{r}
+summary(toyota_model)
+```
+
+## 5-4. Test Set 의 Y `예측하기` => 학습한 Model의 성능 평가
+
+Train set으로 만들어진 Model을 이용해 Test set을 예측할 때, Test set의 X 변수만 활용된다. 
+
+그리고, 예측을 할때는 `predict()` 함수를 이용한다. `predict()`함수는 Train model에서 활용된 변수명과 동일한 변수를 가져와서 예측을 한다.
+
+```
+predict(학습시킨 모형, test data)
+```
+
+```{r}
+y_hat <- predict(toyota_model, toyota_test) # predicted price
+View(y_hat)
+```
+
+실제 test set의 Y와 얼마나 다른가 살펴보자.
+```{r}
+actual_y <- toyota_test$Price # 실제 y / actual y
+error <- actual_y - y_hat
+View(error)
+
+toyota_test_output <- 
+  cbind(actual_y, 
+        y_hat, 
+        error)
+View(toyota_test_output)
+```
+
+## 5-5. 모형평가 하기
+
+MAE(평균절대오차) : Error들을 절대값 씌워서 평균 낸 값
+RMSE(제곱근평균제곱오차) : Error들을 제곱해서 평균낸 다음 루트 씌운 값
+
+#### MAE(예측된 y(y hat), 실제 y)
+```{r}
+MAE(y_hat, actual_y)
+```
+해석 - 우리가 수립한 Model은 평균적으로 플러스, 마이너스 956유로 오차를 발생시킴.
+
+#### RMSE
+```{r}
+RMSE(y_hat, actual_y)
+```
+해석 - 우리가 수립한 Model은 평균적으로 플러스, 마이너스 1312유로 오차를 발생시킴.
+
+
+
+```
+in-sample prediction 
+- 예측해야될 데이터를 적합(fitting) 시킨 경우, 
+예측 오차가 줄어들게 되는 bias
+```
+
+##### 정리
+
+학습 - 예측 - 평가 - 개선 - 학습 - 예측 - 평가
+
+```
+1) train/test set 나누기
+2) train set으로 학습(Learning) 시키기
+3) test set으로 예측(prediction)하기
+4) test set의 actual Y와 3)에서 구한 predicted Y 간 Error
+   를 구한다.
+5) 평가(Evaluation) - Error로 MAE, RMSE 구하기 
+```
+
+--- 
+
+<여기부터 다음시간>
+
+# 6. 교차 검증법(Cross Validation)
+
+## 6-1. k-fold 교차검증 이해 
+
+`caret()` 패키지에 `createFolds()`라는 함수가 포함되어 있다.
+
+```{r}
+library(caret)
+```
+
+```{r}
+toyota <- read_csv("./data/ToyotaCorolla.csv")
+```
+
+```{r}
+set.seed(1234) # 5 등분 할때, 랜덤하게 뽑히는 조합들 1234로 고정
+k_fold_set <- 
+  createFolds(1:nrow(toyota), 
+              k = 5, # 5-fold CV
+              list = TRUE, 
+              returnTrain = FALSE)
+View(k_fold_set)
+```
+
+```{r}
+fold2_index <- k_fold_set$Fold1
+fold1_index <- k_fold_set[[1]]
+
+test_set <- toyota[fold2_index,]
+train_set <- toyota[-fold2_index,]
+```
+
+
+각각의 set에서 train_set 과 test로 나누고, 모델을 생성한 후 성능을 test 해보자. 
+```{r}
+performance_list <- c() 
+
+for(k in 1:5){
+  
+  test_idx <- k_fold_set[[k]] 
+  toyota_test <- toyota[test_idx,]
+  toyota_train <- toyota[-test_idx,]
+  
+  # 모델 학습 
+  toyota_model <- 
+    lm(Price ~ ., data = toyota_train)
+  
+  # 예측
+  predicted_y <- predict(toyota_model, 
+                         toyota_test)
+  actual_y <- toyota_test$Price
+  
+  # 평가
+  mae <- 
+    MAE(actual_y, predicted_y) %>% 
+    round(digit=5)
+  rmse <- 
+    RMSE(actual_y, predicted_y) %>% 
+    round(digit=5)
+  
+  performance_list <- 
+    rbind(performance_list, 
+          c(k, mae, rmse))
+}
+
+performance_list <- 
+  as.data.frame(performance_list)
+
+names(performance_list) <- 
+  c("fold_set", "MAE", "RMSE")
+```
+
+k-fold 교차검증을 기준으로 
+fold set 1번이 최적 모형이다. 
+```{r}
+test_idx <- k_fold_set[[1]] 
+toyota_test <- toyota[test_idx,]
+toyota_train <- toyota[-test_idx,]
+
+best_model <-
+  lm(Price ~., data = toyota_train)
+summary(best_model)
+```
+
+## 6-2. 최적 seed까지 고려하기
+
+500*10 = 5000개 
+
+seed를 고정하지 않고, 최적 Seed를 찾아보자. 
+```{r}
+performance_list <- c() 
+for (seed_num in 1:500){
+  
+  set.seed(seed_num)
+  k_fold_set <- 
+    createFolds(1:nrow(toyota), 
+                k=10, 
+                list=TRUE, 
+                returnTrain = FALSE)
+  
+  for(k in 1:10){
+  
+  test_idx <- k_fold_set[[k]] 
+  toyota_test <- toyota[test_idx,]
+  toyota_train <- toyota[-test_idx,]
+  
+  # 모델 학습 
+  toyota_model <- 
+    lm(Price ~ ., data = toyota_train)
+  
+  # 예측
+  predicted_y <- predict(toyota_model, 
+                         toyota_test)
+  actual_y <- toyota_test$Price
+  
+  # 평가
+  mae <- 
+    MAE(actual_y, predicted_y) %>% 
+    round(digit=5)
+  rmse <- 
+    RMSE(actual_y, predicted_y) %>% 
+    round(digit=5)
+  
+  performance_list <- 
+    rbind(performance_list, 
+          c(seed_num, k, mae, rmse))
+  }
+  
+}
+
+performance_list <- 
+  as.data.frame(performance_list)
+names(performance_list) <- 
+  c("seed_num", "fold_set", "MAE", "RMSE")
+
+performance_list$idx <- 1:nrow(performance_list)
+
+
+library(tidyr)
+perf_long <-
+  performance_list %>%
+  gather(MAE, RMSE, key = "var", value = "value")
+
+ggplot(perf_long, aes(x = idx, y = value, linetype = var, colour = var)) +
+  geom_point() +
+  geom_line()
+
+
+
+```
+
+best 모델을 뽑아보자. 
+```{r}
+set.seed(261)
+k_fold_set <- 
+  createFolds(1:nrow(toyota), 
+              k=10, 
+              list=TRUE, 
+              returnTrain = FALSE)
+
+test_idx <- k_fold_set[[10]] 
+toyota_test <- toyota[test_idx,]
+toyota_train <- toyota[-test_idx,]
+
+best_model <-
+  lm(Price ~., data = toyota_train)
+summary(best_model)
+```
