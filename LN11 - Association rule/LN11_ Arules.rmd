@@ -1,0 +1,643 @@
+---
+title: "LN11 - Association Rules"
+author: "Dohyung Bang"
+output: html_document
+---
+
+```{r "setup", include = FALSE}
+knitr::opts_knit$set(root.dir = "C:/BA2021/")
+```
+
+## 1. 연관규칙분석
+
+## 1-1. Transaction Data 타입의 이해
+
+### 1-1-1. 패키지 설치 및 불러오기
+
+```
+install.packages("arules") # association rules
+install.packages("arulesViz") # arules를 시각화 패키지
+```
+
+```{r}
+library(dplyr) # data manipulation
+library(readr) # read data
+library(tidyr) # shape 변형 
+library(arules)
+library(arulesViz)
+```
+
+### 1-1-2. Transaction Type#1 : Item이 변수로 들어가 있는 경우
+
+다음의 데이터를 살펴보자. 
+
+```{r}
+book_original <- 
+  read_csv("./data/Book_Original.csv")
+```
+
+Original data는 Data frame인데, 우리가 봐야 할 연관 변수가 변수명으로 들어가 있다.
+
+만약, 해당 도서를 구매했으면 1 아니면 0으로 이루어진 데이터프레이 타입의 데이터이다.
+
+`Sparse Matrix`(1 또는 0로 코딩 즉, 더미변수 코딩)은 `Logical` 타입으로 변경한 후, `Transaction` 타입으로 변환할 수 있다.
+
+**복잡하니 로직을 통째로 외워는 것이 좋음**
+
+#### 1) `Sparse Matrix` -> `Logical Matrix` 변환
+
+아래 코드는 `data frame`에서 각 셀이 0 또는 1의 `Numeric` 값을 가질 때, `Transaction`으로 변환하기 전 `Logical`로 변환하는 코드이다.
+
+```{r}
+book_logical <-
+  apply(book_original, 2, as.logical) %>%
+  as.data.frame()
+```
+
+이제 각 셀의 0값은 `FALSE`, 1값은 `TRUE`로 코딩된 것을 알 수 있다.
+```{r}
+head(book_logical)
+```
+
+#### 2) `Logical Matrix` -> `Transaction Data` 변환
+
+이제 `as()` 함수를 써서 위의 실습과 같이 `transaction`데이터로 변환할 수 있다. 
+```{r}
+book_tr <- as(book_logical, 'transactions')
+```
+
+데이터를 살펴보면, 우리가 원하는 `transaction` 데이터를 확인할 수 있다.
+```{r}
+summary(book_tr)
+```
+
+inspect 함수는 transaction data를 조회할때만 쓴다. 
+```{r}
+inspect(book_tr[1:5])
+```
+
+---
+
+### 1-1-3. Transaction Type#2 : `Item`이 셀값으로 들어가 있는 경우
+
+연관규칙분석(Association Rule:AR)에서는 지금까지 배운 데이터 타입(Data Type)과는 다른 타입의 데이터를 다루게 된다.
+AR에서 다루게될 데이터 타입은 `Transaction type`이다. 
+
+`Transaction type`이 어떻게 생겼는지 살펴보기 위해 다음의 data를 불러와 보자. 각 개체가 선택한 메뉴가 셀값으로 들어와 있다. 이런 경우 어떻게 거래 데이터로 만들어야 될까?
+```{r}
+online_retail <- read_csv("./data/OnlineRetail.csv")
+table(online_retail$Country)
+france_retail <- online_retail %>% filter(Country == "France")
+```
+
+위 데이터는 일종의 Long shape 데이터이다.
+Long shape data는 wide shape으로 바꿔주면 되는데, customer 별로 요약을 먼저 해준다. 
+```{r}
+retail_long <- 
+  france_retail %>% 
+  group_by(CustomerID, Description) %>% 
+  summarise(freq = n()) 
+```
+
+
+하지만, 우리가 필요한건 빈도가 아니라 샀는지 여부가 필요한 것이다. 
+따라서, 아래와 같이 코딩해준다. 
+```{r}
+retail_long <- 
+  france_retail %>% 
+  group_by(CustomerID, Description) %>% 
+  summarise(dummy = 1) 
+```
+
+이제 wide type 으로 바꿔준다. 이때 구매하지 않은 품목은 0으로 채워지도록 `fill = 0` 옵션을 추가해준다.
+```{r}
+retail_wide <- 
+  retail_long %>% 
+  spread(key = "Description",
+         value = "dummy",
+         fill = 0)
+```
+
+그 다음 다시 `sparse` -> `logical` matrix -> `transaction` data로 변환하면 된다. 
+
+#### 1) Sparse Matrix -> Logical Matrix 변환
+
+```{r}
+retail_logical <-
+  apply(retail_wide[,-1], 2, as.logical) %>%
+  as.data.frame()
+```
+
+이제 각 셀의 0값은 `FALSE`, 1값은 `TRUE`로 코딩된 것을 알 수 있다.
+```{r}
+head(retail_logical)
+```
+
+#### 2) Logical Matrix -> Transaction Data 변환
+
+이제 `as()` 함수를 써서 위의 실습과 같이 `transaction`데이터로 변환할 수 있다. 
+```{r}
+retail_tr <- as(retail_logical, 'transactions')
+```
+
+데이터를 살펴보면, 우리가 원하는 `transaction` 데이터를 확인할 수 있다.
+```{r}
+summary(retail_tr)
+```
+
+---
+
+## 1-2. 실습#1 : 식료품(Groceries) 연관규칙(Association Rule)
+
+연관규칙(Association Rule)의 다양한 알고리즘 중에 우리가 사용할 알고리즘은 연관규칙분석에서 가장 많이 적용되는 `Apriori` 알고리즘이다.
+
+실습#1은 1달 동안 발생한 9,835건의 식료품(Groceries) 구매 데이터이며, 식료품(Groceries)의 조합은 총 169가지의 카테고리로 분류된다. 
+
+### 1-2-1. 데이터 준비
+
+먼저, 데이터를 확인해 보자.
+
+Data Frame을 타입변경할 때는 `as()` 함수를 쓰지만, 바로 `read.transaction()`함수를 쓰면 transaction type data 생성이 가능하다. 
+
+#### 1번째 방법 - csv -> long -> wide -> logical -> tr 
+```{r}
+basket_df <- 
+  read_csv("./data/groceries_raw.csv")
+
+basket_df$idx <- 1:nrow(basket_df)
+
+basket_long <-
+  gather(basket_df, 
+         V1:V32,
+         key = "var", value = 'item')
+
+basket_long <- na.omit(basket_long)
+basket_long$var <- NULL
+basket_long$dummy <- 1
+
+# Sparse mat
+bakset_wide <- 
+  spread(basket_long,
+         key = "item", 
+         value = "dummy",
+         fill = 0)
+
+# Sparse -> logical 
+bakset_logical <-
+  apply(bakset_wide[,-1], 2, as.logical) %>%
+  as.data.frame()
+
+# logical -> transaction
+basket <- as(bakset_logical, "transactions")
+summary(basket)
+```
+
+```{r}
+summary(basket)
+```
+
+```{r}
+inspect(basket[1:5])
+```
+
+#### 2번째 방법 - csv -> tr
+
+`arules` 패키지 안의 `read.transactions()` 함수를 이용하자.
+```{r}
+basket <- 
+  read.transactions("./data/groceries_raw.csv", 
+                    format = "basket", 
+                    sep=",", 
+                    header = T)
+```
+
+
+#### 데이터 특성 살펴보기 
+
+우선, `basket` 데이터의 특성을 살펴보자.
+가장 빈번하게 구매되는 제품은 **whole milk**이며, 
+이어 **other vegetables**, **rolls/buns**, **soda** 등의 순으로 나타난다.
+```{r}
+summary(basket)
+```
+
+어떤 거래가 가장 빈번하게 발생하는지 시각화를 한번 해보자.
+```{r}
+itemFrequencyPlot(basket, 
+                  topN = 30, 
+                  type = "absolute")
+```
+
+데이터를 첫번째부터 10번째 행까지 살펴보자.
+```{r}
+inspect(basket[1:10])
+```
+
+
+### 1-2-2. 연관규칙(ASSOCIATION RULE) 찾기
+
+`apriori` 알고리즘을 활용해 연관규칙을 찾을때는 `arules`패키지에 포함된 `apriori()`함수를 활용한다.
+`apriori()`함수를 쓸 때, 연구자가 정해야할 것은 `parameter`이다.
+
+기본적으로 apriori 함수는 다음과 같이 사용된다.
+`parameter`에서 `support`, `confidence`, `lift`에 대해 각각 기준값을 설정할 수 있다. 
+
+```
+apriori(tr_data,
+        parameter=list(support = criteria,
+                       confidence = criteria,  
+                       lift = criteria))
+```
+
+#### Rule 찾기
+Rule 이 하나도 없다. 왜그럴까? 
+```{r}
+basket_rules <- apriori(basket)
+inspect(basket_rules)
+```
+
+#### Parameter 설정하기
+지지도(support)는 **0.001**, 
+신뢰도(Confidence)는 **0.9**로 설정해보자.
+
+총 114개의 `Rule`을 찾은 것을 알 수 있다.
+```{r}
+basket_rules <- 
+  apriori(basket, 
+          parameter=list(support=0.001,   
+                         confidence=0.9))
+```
+
+찾은 114개 rule 중에 10개만 프린트 해보자. 
+```{r}
+inspect(basket_rules[1:10])
+
+rule_df <- inspect(basket_rules[1:10])
+```
+
+#### Rule 정렬하기
+`Rule`을 신뢰도(Confidence)가 높은 순서대로 정렬하고, 살펴보자.
+```{r}
+rules_sorted <- 
+  sort(basket_rules, 
+       by = "confidence")
+
+inspect(rules_sorted[1:10])
+```
+
+#### Parameter 재조정하기
+
+생각보다 Rule이 많은 것을 알 수 있다.
+이때, `parameter`를 조절해서 유의미한 Rule을 찾아나갈 수 있다.
+
+여기서는 지지도(support) 기준을 0.002, 신뢰도(confidence) 기준을 0.8로 바꾼 후 실행해본다.
+```{r}
+basket_rules <- 
+  apriori(basket, 
+          parameter=list(support=0.002,   
+                         confidence=0.8))
+```
+
+```{r}
+rules_sorted <- sort(basket_rules, 
+                     by = "confidence")
+inspect(rules_sorted)
+```
+
+```{r}
+rules_sorted <- 
+  sort(basket_rules, 
+       by="confidence")
+inspect(rules_sorted[1:10])
+```
+
+#### 원하는 Item 통제하기 
+
+내가 원하는 `item`만 통제도 할 수 있다. 
+
+##### 원하는 `item` 조건만 포함하기
+```{r}
+basket_rules <- 
+  apriori(basket, 
+          parameter = list(support=0.0005, 
+                           confidence=0.9),
+          appearance = list(default = "lhs",
+                            rhs = "sausage"))
+
+rules_sorted <- sort(basket_rules, by="confidence")
+inspect(rules_sorted)
+```
+
+```{r}
+basket_rules <- 
+  apriori(basket, 
+          parameter=list(support=0.0005, 
+                         confidence=0.9),
+          appearance = list(default = "lhs",
+                            #lhs %in% "",
+                            rhs = "domestic eggs"))
+
+rules_sorted <- sort(basket_rules, by="confidence")
+inspect(rules_sorted[1:10])
+```
+
+##### 원하지 않는 품목만 제외하고 보기 
+```{r}
+basket_rules <-
+  apriori(basket,
+          parameter=list(support = 0.0008,
+                         confidence = 0.9),
+          appearance = list(none = 
+                              c("whole milk", 
+                                "other vegetables")))
+
+rules_sorted <- sort(basket_rules, by="confidence")
+inspect(rules_sorted)
+```
+
+
+### 1-2-3. 연관규칙 시각화
+
+연관규칙 시각화는 `plot()`함수를 활용한다.
+
+```{r}
+basket_rules <-
+  apriori(basket,
+          parameter=list(support = 0.0006,
+                         confidence = 0.9),
+          appearance = list(none = c("whole milk", 
+                                     "other vegetables")))
+```
+
+```{r}
+plot(basket_rules, method = "graph")
+```
+
+```{r}
+plot(basket_rules, method="graph", 
+    control=list(type="items"), 
+                 vertex.label.cex = 0.1, 
+                 edge.arrow.size = 0.1,
+                 edge.arrow.width = 1,
+                 edge.label.cex = 0.1)
+```
+
+#### 참고 
+(source : http://rfriend.tistory.com/tag/%EC%97%B0%EA%B4%80%EA%B7%9C%EC%B9%99%20%EC%8B%9C%EA%B0%81%ED%99%94)
+
+##### Edge : 선 관련 옵션
+```
+edge.color : 선 색 지정 (default = "darkgrey")
+edge.width : 선 폭
+edge.arrow.size : 화살 크기
+edge.arrow.width : 화살 폭
+edge.arrow.mode : 화살 머리 유형 (0 : 없음,  1 : 역방향,  2 : 순방향,   3 : 양방향)
+                                  (무방향 네트워크의 경우 default = 0)
+edge.lty : 선 유형 ("solid", "dashed", "dotted", "dotdash", "longdash", "twodash")
+edge.label : 선 레이블
+edge.label.family : 선 레이블 종류 ("serif", "sans", "mono" 등)
+edge.label.font : 선 레이블 글자형 (1 : plain text, 2 : bold, 3 : italic, 4 : bold italic)
+edge.label.cex : 선 레이블 크기 (default = 1)
+edge.label.color : 선 레이블 색 (default = "navy") 
+
+```
+
+##### Vertex : 점 관련 옵션
+```
+vertex.size : 점 크기, vector도 가능 (default = 15)
+vertex.color : 점 색 (default = "SkyBlue2")
+vertex.frame.color : 점 윤곡의 색 (default = "black")
+vertex.shape : 점 형태 ("circle", "square", "rectangle", "none", default = "circle")
+vertex.label : 점 레이블 (vector)
+vertex.label.family : 점 레이블 종류 ("serif", "sans", "mono" 등)
+vertex.label.font : 점 레이블 글자형 (1 : plain text, 2 : bold, 3 : italic, 4 : bold italic)
+vertex.label.cex : 점 레이블 크기 (default = 1)
+vertex.label.dist : 점 중심과 레이블 간 거리 (default = 0)
+vertex.label.degree : 점 레이블 방향(radian) (좌 : 0, 우 : pi, 상 : -pi/2, 하 : pi/2)
+vertex.label.color : 점 레이블 색 (default = "navy")
+```
+
+### 1-2-4. 시각화의 네트워크 강조하기 
+
+시각화의 네트워크를 좀 더 자세히 보고 싶다면 아래 두 패키지를 추가로 활용해보자.
+
+```
+install.packages("visNetwork")
+install.packages("igraph")
+```
+
+```{r}
+library(visNetwork) ## 시각화 결과를 이용해 네트워크 표현에 필요
+library(igraph) ## 시각화 결과를 동적으로 표현
+```
+
+
+<그래도 Logic을 따라간다>
+```{r}
+plot <- plot(basket_rules, 
+             method = "graph", 
+             control = list(type="items"))
+```
+
+`igraph` 패키지 내에 plot 객체를 data frame 객체로 변환하는 `get.data.frame` 이라는 함수가 있다. 
+해당 함수를 이용해 plot 객체를 데이터 프레임으로 바꿔보자.
+```{r}
+plot_df <- get.data.frame(plot, what = "both")
+```
+
+아래 코드는 복잡하니, 위에서 plot_df를 정의하고 나면 아래 코드는 항상 복사해서 쓰면 된다. 
+
+```{r}
+visNetwork(
+  nodes = data.frame(id = plot_df$vertices$name,
+                     value = plot_df$vertices$support,
+                     title = ifelse(plot_df$vertices$label == "",
+                                    plot_df$vertices$name,
+                                    plot_df$vertices$label), 
+                     plot_df$vertices), 
+  edges = plot_df$edges) %>%
+visEdges(plot_df$edges) %>%
+visOptions(highlightNearest = T)
+```
+
+네트워크를 `html`문서로 저장할 수 도 있다.
+```{r}
+graph <- 
+  visNetwork(
+    nodes = data.frame(id = plot_df$vertices$name,
+                       value = plot_df$vertices$support,
+                       title = ifelse(plot_df$vertices$label == "",
+                                      plot_df$vertices$name,
+                                      plot_df$vertices$label), 
+                       plot_df$vertices), 
+    edges = plot_df$edges,
+    width = 1000,
+    height = 1000) %>%
+  visEdges(plot_df$edges) %>%
+  visOptions(highlightNearest = T)
+```
+
+```{r}
+visSave(graph, 
+        "./groceries_network.html", 
+        selfcontained = TRUE, 
+        background = "white")
+```
+
+--- 
+
+## 1-3. 실습#2 : 화장품 구매 연관규칙 
+
+```{r}
+# sparse
+cosmetics <- read.csv("./data/Cosmetics.csv")
+
+# sparse -> logical
+cosmetics <- 
+  apply(cosmetics, 2, as.logical) %>%
+  as.data.frame
+
+# logical -> transaction
+cosmetics_tr <- as(cosmetics, 'transactions')
+summary(cosmetics_tr)
+itemFrequencyPlot(cosmetics_tr, 
+                  topN = 20, 
+                  type = "absolute")
+```
+
+```{r}
+cosmetics_rules <- 
+  apriori(cosmetics_tr, 
+          parameter = list(support=0.09, 
+                           confidence=0.9))
+```
+
+```{r}
+rules_sorted <- 
+  sort(cosmetics_rules, 
+       by="conf")
+inspect(rules_sorted)
+```
+
+```{r}
+plot <- plot(rules_sorted, 
+             method="graph", 
+             control=list(type="items"))
+```
+
+```{r}
+plot_df <- get.data.frame(plot, what = "both")
+visNetwork(
+  nodes = data.frame(id = plot_df$vertices$name,
+                     value = plot_df$vertices$support,
+                     title = ifelse(plot_df$vertices$label == "",
+                                    plot_df$vertices$name,
+                                    plot_df$vertices$label), 
+                     plot_df$vertices), 
+  edges = plot_df$edges) %>%
+visEdges(plot_df$edges) %>%
+visOptions(highlightNearest = T)
+```
+
+## 1-4. 실습#3 : 한 빌딩 안에 어떤 테넌트(Tenant)를 입주시키는 것이 효율적일까?
+
+```{r}
+buildings <- 
+  read_csv("./data/Buildings.csv",
+          locale = locale("ko", 
+                          encoding = "UTF-8"))
+
+# NA -> zero 바꿔주기
+buildings[is.na(buildings)] <- 0
+
+# id 변수 제외
+buildings <- buildings[,-1]
+
+# 한글칼럼 -> 영문칼럼 변경 
+names(buildings) <- 
+  c("hospital", "Pharm", 
+    "Cafe", "Mobile", "rest",
+    "Family", "PoketBall", 
+    "Academy", "Market", "Bank",
+    "Conv", "Cosmetic")
+
+# Sparse mat -> logical mat
+buildings <- 
+  apply(buildings, 2, as.logical) %>%
+  as.data.frame
+
+# logical mat -> tr type
+buildings_tr <- as(buildings,'transactions')
+```
+
+```{r}
+buildings_rules <- 
+  apriori(buildings_tr, 
+          parameter=list(support=0.1, 
+                         confidence=0.9))
+```
+
+```{r}
+rules_sorted <- 
+  sort(buildings_rules, by="confidence")
+inspect(rules_sorted[1:10])
+```
+
+```{r}
+plot(rules_sorted, 
+     method="graph", 
+     control=list(type = "items"))
+```
+
+## 1-5. 실습#4 : 다음 여행지로 어디를 추천해주면 좋을까? 
+
+```{r}
+tourists <- read.csv("./data/Tourists.csv")
+tourists[is.na(tourists)] <- 0
+
+#id 제거
+tourists <- tourists[,-1]
+
+# sparse mat -> logical mat
+tourists <- 
+  apply(tourists, 2, as.logical) %>%
+  as.data.frame
+
+# logical mat -> transaction data
+tourists_tr <- as(tourists,'transactions')
+```
+
+```{r}
+tourists_rules <- 
+  apriori(tourists_tr, 
+          parameter = list(support = 0.2, 
+                           confidence = 0.9))
+```
+
+```{r}
+rules_sorted <- 
+  sort(tourists_rules, by="conf")
+inspect(rules_sorted)
+```
+
+```{r}
+plot(rules_sorted, method="graph", control=list(type="items"))
+```
+
+##### 그리스 여행 상품을 개발하는데, 누구에게 추천하면 좋을까? 
+
+```{r}
+tourists_rules <- 
+  apriori(tourists_tr, 
+          parameter = list(support = 0.1, 
+                           confidence = 0.9),
+          appearance = list(default = "lhs",
+                            rhs = "Greece"))
+```
+
+```{r}
+rules_sorted <- 
+  sort(tourists_rules, by="support")
+inspect(rules_sorted[1:10])
+```
+
